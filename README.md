@@ -1,37 +1,78 @@
-# maud_exts
+# maud_extensions
 
-Proc macros to simplify Maud views.
+Proc macros to simplify Maud views with inline CSS, JS, and font helpers.
 
 ## Install
 ```toml
 [dependencies]
-maud-exts = "0.1.0"
+maud-extensions = "0.1.0"
 ```
 
-## Macros
-- `css! { ... }` or `css!("...")`: emits a `<style>` block with raw CSS.
-- `js! { ... }` or `js!("...")`: emits a `<script>` block with raw JS.
-- `inline_css! { ... }` and `inline_js! { ... }`: emit `fn css() -> maud::Markup` / `fn js() -> maud::Markup`.
-- `font_face!` and `font_faces!`: inline font-face CSS as data URLs.
-
-## Notes
-- `css!` validates CSS using `cssparser`.
-- `js!` validates JavaScript using `swc_ecma_parser`.
-- `font_face!` uses `base64` at the call site, so the consuming crate must include `base64` if you use those macros.
-
-## Example
+## Quick start
 ```rust
-use maud_exts::{css, js};
+use maud_extensions::{css, js};
 
 maud::html! {
-    div {
+    div class="card" {
         (css! {
-            me { padding: 8px; }
+            me { padding: 8px; border: 1px solid #ddd; }
+            me em { color: #c00; }
         })
-        button { "Ping" }
+        p { "Inline CSS and JS" }
         (js! {
-            me("-").on("click", () => { me("-").textContent = "Pong." })
+            me().class_add("ready");
         })
     }
 }
 ```
+
+## Macro overview
+- `css! { ... }` or `css!("...")`
+  - Emits a `<style>` block with raw CSS.
+  - Validates CSS using `cssparser`.
+- `js! { ... }` or `js!("...")`
+  - Emits a `<script>` block with raw JS.
+  - Validates JavaScript using `swc_ecma_parser`.
+- `inline_css! { ... }` and `inline_js! { ... }`
+  - Generate `fn css() -> maud::Markup` / `fn js() -> maud::Markup` helpers.
+- `font_face!` and `font_faces!`
+  - Inline font-face CSS as data URLs.
+
+## CSS scoping pattern
+These macros are often paired with a tiny JS scoper like
+[`css-scope-inline`](https://github.com/gnat/css-scope-inline). It rewrites
+selectors like `me { ... }` to a unique class on the parent element.
+
+Example:
+```rust
+(css! {
+    me { border: 1px dashed var(--accent); }
+    me em { font-style: normal; }
+})
+```
+
+## Inline JS helpers
+The JS macro is format-preserving but may add spacing for token safety. It
+still emits valid JavaScript.
+
+```rust
+(js! {
+    me().class_add("pinged");
+})
+```
+
+## Font helpers
+`font_face!` and `font_faces!` embed font files as base64 data URLs. Because
+this macro expands at the call site, the consuming crate must include `base64`
+if you use these macros.
+
+```rust
+use maud_extensions::font_face;
+
+maud::html! {
+    (font_face!("static/fonts/JetBrainsMono.woff2", "JetBrains Mono"))
+}
+```
+
+## License
+MIT OR Apache-2.0

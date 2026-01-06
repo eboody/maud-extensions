@@ -1,17 +1,17 @@
 [package]
-name = "maud-exts"
+name = "maud-extensions"
 version = "0.1.0"
 edition = "2024"
 description = "Inline CSS, JS, and font helper macros for Maud views."
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/eboody/maud-exts"
-homepage = "https://github.com/eboody/maud-exts"
+repository = "https://github.com/eboody/maud-extensions"
+homepage = "https://github.com/eboody/maud-extensions"
 readme = "README.md"
 keywords = ["maud", "macros", "css", "javascript", "html"]
 categories = ["web-programming", "template-engine"]
 
 [lib]
-name = "maud_exts"
+name = "maud_extensions"
 proc-macro = true
 
 [dependencies]

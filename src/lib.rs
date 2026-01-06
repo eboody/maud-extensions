@@ -202,7 +202,7 @@ pub fn inline_js(input: TokenStream) -> TokenStream {
     let tokens: TokenStream2 = input.into();
     let output = quote! {
         fn js() -> maud::Markup {
-            ::maud_exts::js! { #tokens }
+            ::maud_extensions::js! { #tokens }
         }
     };
 
@@ -214,7 +214,7 @@ pub fn inline_css(input: TokenStream) -> TokenStream {
     let tokens: TokenStream2 = input.into();
     let output = quote! {
         fn css() -> maud::Markup {
-            ::maud_exts::css! { #tokens }
+            ::maud_extensions::css! { #tokens }
         }
     };
 
@@ -423,7 +423,7 @@ pub fn font_faces(input: TokenStream) -> TokenStream {
 
         quote! {
             {
-                use maud_exts::font_face;
+                use maud_extensions::font_face;
                 let face = font_face!(#path, #family, #weight, #style);
                 css.push_str(&face.0);
             }
