@@ -57,7 +57,9 @@ Example:
 
 ## Inline JS helpers
 The JS macro is format-preserving but may add spacing for token safety. It
-still emits valid JavaScript.
+still emits valid JavaScript. The examples use
+[`surreal`](https://github.com/gnat/surreal) for the `me()` helper, but any
+inline script works.
 
 ```rust
 (js! {
