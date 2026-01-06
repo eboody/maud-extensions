@@ -7,9 +7,8 @@
 Proc macros to simplify Maud views with inline CSS, JS, and font helpers.
 
 ## Install
-```toml
-[dependencies]
-maud-extensions = "0.1.0"
+```bash
+cargo add maud-extensions
 ```
 
 ## Quick start
