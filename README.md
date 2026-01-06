@@ -1,5 +1,9 @@
 # maud_extensions
 
+[![crates.io](https://img.shields.io/crates/v/maud-extensions.svg)](https://crates.io/crates/maud-extensions)
+[![docs.rs](https://img.shields.io/docsrs/maud-extensions)](https://docs.rs/maud-extensions)
+[![license](https://img.shields.io/crates/l/maud-extensions.svg)](https://github.com/eboody/maud-extensions)
+
 Proc macros to simplify Maud views with inline CSS, JS, and font helpers.
 
 ## Install
