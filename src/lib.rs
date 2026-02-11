@@ -2,7 +2,7 @@ use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2, TokenTree};
 use quote::quote;
 use swc_common::{FileName, SourceMap};
-use swc_ecma_parser::{EsConfig, Parser, StringInput, Syntax};
+use swc_ecma_parser::{EsSyntax, Parser, StringInput, Syntax};
 use syn::{
     LitStr, Result, Token,
     parse::{Parse, ParseStream},
@@ -277,9 +277,12 @@ fn tokens_to_js(tokens: TokenStream2) -> String {
 
 fn validate_js(js: &str) -> core::result::Result<(), String> {
     let cm = SourceMap::default();
-    let fm = cm.new_source_file(FileName::Custom("inline.js".to_string()), js.to_string());
+    let fm = cm.new_source_file(
+        FileName::Custom("inline.js".to_string()).into(),
+        js.to_string(),
+    );
     let input = StringInput::from(&*fm);
-    let mut parser = Parser::new(Syntax::Es(EsConfig::default()), input, None);
+    let mut parser = Parser::new(Syntax::Es(EsSyntax::default()), input, None);
     match parser.parse_script() {
         Ok(_) => Ok(()),
         Err(err) => Err(format!("js! could not parse JavaScript: {err:#?}")),
