@@ -1,0 +1,4 @@
+interface:
+  display_name: "Maud Extensions"
+  short_description: "Proc-macro guidance for css!/js!/font_face!"
+  default_prompt: "Use $maud-extensions to update the proc macros and keep README examples in sync."

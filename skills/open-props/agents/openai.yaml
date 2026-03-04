@@ -1,0 +1,4 @@
+interface:
+  display_name: "Open Props"
+  short_description: "Open Props docs snapshot + integration guidance"
+  default_prompt: "Use $open-props to implement or verify Open Props imports, tokens, and documented variable usage."
