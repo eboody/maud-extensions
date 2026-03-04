@@ -90,7 +90,7 @@ pub fn css(input: TokenStream) -> TokenStream {
         );
 
         maud::html! {
-            style {
+            style data-mx-css-id=(__id) {
                 (maud::PreEscaped(#content_lit))
             }
         }
