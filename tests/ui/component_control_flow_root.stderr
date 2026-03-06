@@ -1,0 +1,12 @@
+error: component! expects exactly one top-level element with a body block, e.g. component! { article { ... } }
+ --> tests/ui/component_control_flow_root.rs:5:13
+  |
+5 |       let _ = component! {
+  |  _____________^
+6 | |         @if flag {
+7 | |             div { "x" }
+8 | |         }
+9 | |     };
+  | |_____^
+  |
+  = note: this error originates in the macro `component` (in Nightly builds, run with -Z macro-backtrace for more info)

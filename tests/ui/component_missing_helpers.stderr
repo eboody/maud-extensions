@@ -1,0 +1,10 @@
+error[E0425]: cannot find function `css` in this scope
+ --> tests/ui/component_missing_helpers.rs:4:13
+  |
+4 |       let _ = component! {
+  |  _____________^
+5 | |         div { "missing" }
+6 | |     };
+  | |_____^ not found in this scope
+  |
+  = note: this error originates in the macro `component` (in Nightly builds, run with -Z macro-backtrace for more info)

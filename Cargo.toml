@@ -1,8 +1,8 @@
 [package]
 name = "maud-extensions"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
-description = "Inline CSS, JS, and font helper macros for Maud views."
+description = "Component, inline CSS/JS, and font helper macros for Maud views."
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/eboody/maud-extensions"
 homepage = "https://github.com/eboody/maud-extensions"
@@ -21,3 +21,7 @@ quote = "1.0.41"
 swc_common = "18.0.1"
 swc_ecma_parser = "33.0.1"
 syn = { version = "2.0.106", features = ["full"] }
+
+[dev-dependencies]
+maud = "0.27"
+trybuild = "1.0.112"

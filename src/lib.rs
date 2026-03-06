@@ -1,5 +1,5 @@
 use proc_macro::TokenStream;
-use proc_macro2::{Span, TokenStream as TokenStream2, TokenTree};
+use proc_macro2::{Delimiter, Group, Span, TokenStream as TokenStream2, TokenTree};
 use quote::quote;
 use swc_common::{FileName, SourceMap};
 use swc_ecma_parser::{EsSyntax, Parser, StringInput, Syntax};
@@ -47,9 +47,7 @@ impl Parse for CssInput {
     }
 }
 
-#[proc_macro]
-pub fn css(input: TokenStream) -> TokenStream {
-    let css_input = parse_macro_input!(input as CssInput);
+fn expand_css_markup(css_input: CssInput) -> TokenStream {
     let content_lit = match css_input {
         CssInput::Literal(content) => content,
         CssInput::Tokens(tokens) => {
@@ -64,42 +62,59 @@ pub fn css(input: TokenStream) -> TokenStream {
     };
 
     let output = quote! {
+        {
+            fn callsite_id(prefix: &str, file: &str, line: u32, col: u32) -> String {
+                // Stable, cheap hash. You can swap this for blake3 if you want.
+                let mut h: u64 = 0xcbf29ce484222325; // FNV-1a offset
+                for b in file.as_bytes() {
+                    h ^= *b as u64;
+                    h = h.wrapping_mul(0x100000001b3);
+                }
+                for b in line.to_le_bytes() {
+                    h ^= b as u64;
+                    h = h.wrapping_mul(0x100000001b3);
+                }
+                for b in col.to_le_bytes() {
+                    h ^= b as u64;
+                    h = h.wrapping_mul(0x100000001b3);
+                }
 
-        pub fn callsite_id(prefix: &str, file: &str, line: u32, col: u32) -> String {
-            // Stable, cheap hash. You can swap this for blake3 if you want.
-            let mut h: u64 = 0xcbf29ce484222325; // FNV-1a offset
-            for b in file.as_bytes() {
-                h ^= *b as u64;
-                h = h.wrapping_mul(0x100000001b3);
+                // HTML id safe, short, deterministic.
+                format!("{prefix}{h:016x}")
             }
-            for b in line.to_le_bytes() {
-                h ^= b as u64;
-                h = h.wrapping_mul(0x100000001b3);
-            }
-            for b in col.to_le_bytes() {
-                h ^= b as u64;
-                h = h.wrapping_mul(0x100000001b3);
-            }
 
-            // HTML id safe, short, deterministic.
-            format!("{prefix}{h:016x}")
-        }
+            let __id = callsite_id(
+                "mx-css-",
+                file!(),
+                line!(),
+                column!(),
+            );
 
-        let __id = callsite_id(
-            "mx-css-",
-            file!(),
-            line!(),
-            column!(),
-        );
-
-        maud::html! {
-            style data-mx-css-id=(__id) {
-                (maud::PreEscaped(#content_lit))
+            maud::html! {
+                style data-mx-css-id=(__id) {
+                    (maud::PreEscaped(#content_lit))
+                }
             }
         }
     };
 
     TokenStream::from(output)
+}
+
+fn expand_css_helper(tokens: TokenStream2) -> TokenStream {
+    let output = quote! {
+        fn css() -> maud::Markup {
+            ::maud_extensions::inline_css! { #tokens }
+        }
+    };
+
+    TokenStream::from(output)
+}
+
+#[proc_macro]
+pub fn css(input: TokenStream) -> TokenStream {
+    let tokens: TokenStream2 = input.into();
+    expand_css_helper(tokens)
 }
 
 fn tokens_to_css(tokens: TokenStream2) -> String {
@@ -164,15 +179,13 @@ fn validate_css(css: &str) -> core::result::Result<(), String> {
             Ok(_) => {}
             Err(err) => match err.kind {
                 cssparser::BasicParseErrorKind::EndOfInput => return Ok(()),
-                _ => return Err("css! could not parse CSS tokens".to_string()),
+                _ => return Err("inline_css! could not parse CSS tokens".to_string()),
             },
         }
     }
 }
 
-#[proc_macro]
-pub fn js(input: TokenStream) -> TokenStream {
-    let js_input = parse_macro_input!(input as JsInput);
+fn expand_js_markup(js_input: JsInput) -> TokenStream {
     let (content_lit, js_string) = match js_input {
         JsInput::Literal(content) => {
             let js_string = content.value();
@@ -200,12 +213,10 @@ pub fn js(input: TokenStream) -> TokenStream {
     TokenStream::from(output)
 }
 
-#[proc_macro]
-pub fn inline_js(input: TokenStream) -> TokenStream {
-    let tokens: TokenStream2 = input.into();
+fn expand_js_helper(tokens: TokenStream2) -> TokenStream {
     let output = quote! {
         fn js() -> maud::Markup {
-            ::maud_extensions::js! { #tokens }
+            ::maud_extensions::inline_js! { #tokens }
         }
     };
 
@@ -213,15 +224,80 @@ pub fn inline_js(input: TokenStream) -> TokenStream {
 }
 
 #[proc_macro]
-pub fn inline_css(input: TokenStream) -> TokenStream {
+pub fn js(input: TokenStream) -> TokenStream {
     let tokens: TokenStream2 = input.into();
+    expand_js_helper(tokens)
+}
+
+#[proc_macro]
+pub fn inline_js(input: TokenStream) -> TokenStream {
+    let js_input = parse_macro_input!(input as JsInput);
+    expand_js_markup(js_input)
+}
+
+#[proc_macro]
+pub fn inline_css(input: TokenStream) -> TokenStream {
+    let css_input = parse_macro_input!(input as CssInput);
+    expand_css_markup(css_input)
+}
+
+fn component_syntax_error() -> syn::Error {
+    syn::Error::new(
+        Span::call_site(),
+        "component! expects exactly one top-level element with a body block, e.g. component! { article { ... } }",
+    )
+}
+
+#[proc_macro]
+pub fn component(input: TokenStream) -> TokenStream {
+    let mut tokens: Vec<TokenTree> = TokenStream2::from(input).into_iter().collect();
+
+    while matches!(
+        tokens.last(),
+        Some(TokenTree::Punct(punct)) if punct.as_char() == ';'
+    ) {
+        tokens.pop();
+    }
+
+    if tokens.is_empty() {
+        return component_syntax_error().to_compile_error().into();
+    }
+
+    if !matches!(tokens.first(), Some(TokenTree::Ident(_))) {
+        return component_syntax_error().to_compile_error().into();
+    }
+
+    let root_body_count = tokens
+        .iter()
+        .filter(|token| matches!(token, TokenTree::Group(group) if group.delimiter() == Delimiter::Brace))
+        .count();
+
+    if root_body_count != 1 {
+        return component_syntax_error().to_compile_error().into();
+    }
+
+    let Some(TokenTree::Group(root_group)) = tokens.last() else {
+        return component_syntax_error().to_compile_error().into();
+    };
+    if root_group.delimiter() != Delimiter::Brace {
+        return component_syntax_error().to_compile_error().into();
+    }
+
+    let mut injected_body = root_group.stream();
+    injected_body.extend(quote! { (js()) (css()) });
+    let mut updated_group = Group::new(Delimiter::Brace, injected_body);
+    updated_group.set_span(root_group.span());
+    let last_index = tokens.len() - 1;
+    tokens[last_index] = TokenTree::Group(updated_group);
+
+    let root_tokens: TokenStream2 = tokens.into_iter().collect();
     let output = quote! {
-        fn css() -> maud::Markup {
-            ::maud_extensions::css! { #tokens }
+        maud::html! {
+            #root_tokens
         }
     };
 
-    TokenStream::from(output)
+    output.into()
 }
 
 #[proc_macro]
@@ -335,7 +411,7 @@ fn validate_js(js: &str) -> core::result::Result<(), String> {
     let mut parser = Parser::new(Syntax::Es(EsSyntax::default()), input, None);
     match parser.parse_script() {
         Ok(_) => Ok(()),
-        Err(err) => Err(format!("js! could not parse JavaScript: {err:#?}")),
+        Err(err) => Err(format!("inline_js! could not parse JavaScript: {err:#?}")),
     }
 }
 

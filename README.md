@@ -12,19 +12,19 @@ This crate includes bundled copies of
 repos to see what these two tiny JS files can do and how to use them.
 
 ## Why use it?
-- Keep CSS and JS close to the Maud view where they are used.
-- Validate inline CSS (`css!`) and JS (`js!`) at compile time.
-- Use an SFC-like flow with `inline_js!` + markup + `inline_css!`.
-- Inline runtime files like `surreal.js` and `css-scope-inline.js` with one macro.
-- Embed fonts as base64 `@font-face` blocks.
+- Define component-local `js()` and `css()` helpers with short macros.
+- Wrap markup with `component!` and auto-inject `(js())` + `(css())`.
+- Emit direct `<script>` / `<style>` blocks when needed.
+- Bundle `surreal.js` and `css-scope-inline.js` with zero path setup.
+- Embed fonts as base64 `@font-face` CSS.
 
 ## Table of Contents
 - [Install](#install)
 - [Quick Start](#quick-start)
-- [SFC-Style Component Flow](#sfc-style-component-flow)
-- [Inject JS/CSS Files](#inject-jscss-files)
+- [component!](#component)
+- [Runtime Injection](#runtime-injection)
 - [Macro Reference](#macro-reference)
-- [CSS Scoping Pattern](#css-scoping-pattern)
+- [Migration (Breaking)](#migration-breaking)
 - [Font Helpers](#font-helpers)
 - [License](#license)
 
@@ -37,23 +37,23 @@ cargo add maud-extensions
 ## Quick Start
 
 ```rust
-use maud_extensions::{inline_css, inline_js, surreal_scope_inline};
+use maud_extensions::{component, css, js, surreal_scope_inline};
 
 fn status_card(message: &str) -> maud::Markup {
-    inline_js! {
+    // Defines local `fn js() -> maud::Markup`.
+    js! {
         me().class_add("ready");
     }
 
-    let view = maud::html! {
+    let view = component! {
         article class="status-card" {
             h2 { "System status" }
             p class="message" { (message) }
-            (js())
-            (css())
         }
     };
 
-    inline_css! {
+    // Defines local `fn css() -> maud::Markup`.
+    css! {
         me {
             border: 1px solid #ddd;
             border-radius: 10px;
@@ -85,49 +85,35 @@ fn page() -> maud::Markup {
 }
 ```
 
-## SFC-Style Component Flow
+## `component!`
 
-You can structure a Maud component like a single-file component:
-- script at the top
-- template/markup in the middle
-- style at the bottom
+`component!` wraps one top-level Maud element and appends `(js())` and `(css())`
+inside that root element automatically.
 
 ```rust
-use maud_extensions::{inline_css, inline_js};
+use maud_extensions::component;
 
-fn profile_card() -> maud::Markup {
-    inline_js! {
-        me().class_add("hydrated");
+let view = component! {
+    section class="card" {
+        p { "Hello" }
     }
-
-    let view = maud::html! {
-        article class="profile-card" {
-            h2 { "Maud component" }
-            p { "Script on top, markup in the middle, style at the bottom." }
-            (js())
-            (css())
-        }
-    };
-
-    inline_css! {
-        me {
-            border: 1px solid #ddd;
-            border-radius: 10px;
-            padding: 12px;
-        }
-    }
-
-    view
-}
+};
 ```
 
-`inline_js!` and `inline_css!` generate local helpers:
-- `fn js() -> maud::Markup`
-- `fn css() -> maud::Markup`
+Equivalent output shape:
+- root element content
+- then `(js())`
+- then `(css())`
 
-## Inject JS/CSS Files
+Rules:
+- input must be exactly one top-level element with a `{ ... }` body
+- `js()` and `css()` helpers must already be in scope
+- trailing `;` is allowed
+- invalid root shapes fail at compile time with guidance
 
-Use the bundled runtime macro when you want zero path setup:
+## Runtime Injection
+
+Use bundled runtime scripts with no filesystem setup:
 
 ```rust
 use maud_extensions::surreal_scope_inline;
@@ -137,55 +123,48 @@ maud::html! {
 }
 ```
 
-### Inject a single file
-
-Use file-include macros for your own custom files via Rust's `include_str!`
-behavior:
+Need custom files instead? Use `js_file!` / `css_file!` (`include_str!` behavior):
 
 ```rust
 use maud_extensions::js_file;
 
 maud::html! {
-    (js_file!(concat!(env!("HOME"), "/code/eran_codes/crates/http/static/surreal.js")))
+    (js_file!("static/vendor/custom-runtime.js"))
 }
 ```
 
-`surreal_scope_inline!()` emits two `<script>` tags:
-- bundled `surreal.js`
-- bundled `css-scope-inline.js`
-
 ## Macro Reference
 
-- `css! { ... }` / `css!("...")`
-  - Emit a `<style>` block.
-  - Validate CSS via `cssparser`.
 - `js! { ... }` / `js!("...")`
-  - Emit a `<script>` block.
+  - Generate local `fn js() -> maud::Markup` helper.
+- `css! { ... }` / `css!("...")`
+  - Generate local `fn css() -> maud::Markup` helper.
+- `component! { ... }`
+  - Wrap one root element and inject `(js())` + `(css())` at the end of its body.
+- `inline_js! { ... }` / `inline_js!("...")`
+  - Emit `<script>` markup directly.
   - Validate JS via `swc_ecma_parser`.
-- `inline_css! { ... }` / `inline_js! { ... }`
-  - Generate local `css()` / `js()` helpers for SFC-style layout.
-- `css_file!("path")` / `js_file!("path")`
-  - Emit `<style>` / `<script>` tags from file contents.
+- `inline_css! { ... }` / `inline_css!("...")`
+  - Emit `<style>` markup directly.
+  - Validate CSS via `cssparser`.
+- `js_file!("path")` / `css_file!("path")`
+  - Emit `<script>` / `<style>` tags from file contents.
 - `surreal_scope_inline!()`
-  - Emit bundled `surreal.js` and `css-scope-inline.js` without path setup.
+  - Emit bundled `surreal.js` and `css-scope-inline.js`.
 - `font_face!(...)` / `font_faces!(...)`
   - Embed font files as base64 `@font-face` CSS.
 
-## CSS Scoping Pattern
+## Migration (Breaking)
 
-These macros pair well with
-[`css-scope-inline`](https://github.com/gnat/css-scope-inline), which rewrites
-selectors like `me { ... }` to a generated class on the current element.
+The JS/CSS macro names were intentionally swapped.
 
-```rust
-(css! {
-    me { border: 1px dashed var(--accent); }
-    me em { font-style: normal; }
-})
-```
+- old `js!` -> now `inline_js!`
+- old `css!` -> now `inline_css!`
+- old `inline_js!` -> now `js!`
+- old `inline_css!` -> now `css!`
 
-The examples use [`surreal`](https://github.com/gnat/surreal) for the `me()`
-helper, but any inline JS can be used.
+If you were manually placing `(js())` / `(css())` inside root markup, you can now
+switch to `component!` and remove those explicit calls.
 
 ## Font Helpers
 

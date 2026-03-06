@@ -1,0 +1,7 @@
+error: component! expects exactly one top-level element with a body block, e.g. component! { article { ... } }
+ --> tests/ui/component_empty.rs:4:13
+  |
+4 |     let _ = component! {};
+  |             ^^^^^^^^^^^^^
+  |
+  = note: this error originates in the macro `component` (in Nightly builds, run with -Z macro-backtrace for more info)
