@@ -37,49 +37,58 @@ cargo add maud-extensions
 ## Quick Start
 
 ```rust
+use maud::{html, Markup, Render};
 use maud_extensions::{component, css, js, surreal_scope_inline};
 
-fn status_card(message: &str) -> maud::Markup {
-    // Defines local `fn js() -> maud::Markup`.
-    js! {
-        me().class_add("ready");
-    }
-
-    let view = component! {
-        article class="status-card" {
-            h2 { "System status" }
-            p class="message" { (message) }
-        }
-    };
-
-    // Defines local `fn css() -> maud::Markup`.
-    css! {
-        me {
-            border: 1px solid #ddd;
-            border-radius: 10px;
-            padding: 12px;
-            transition: border-color 160ms ease-in;
-        }
-        me.ready {
-            border-color: #16a34a;
-        }
-        me .message {
-            margin: 0;
-            opacity: 0.85;
-        }
-    }
-
-    view
+struct StatusCard<'a> {
+    message: &'a str,
 }
 
-fn page() -> maud::Markup {
-    maud::html! {
-        head {
-            // Inject bundled `surreal.js` + `css-scope-inline.js`.
-            (surreal_scope_inline!())
+impl<'a> Render for StatusCard<'a> {
+    fn render(&self) -> Markup {
+        js! {
+            me().class_add("ready");
         }
-        body {
-            (status_card("All systems operational"))
+
+        let view = component! {
+            article class="status-card" {
+                h2 { "System status" }
+                p class="message" { (self.message) }
+            }
+        };
+
+        css! {
+            me {
+                border: 1px solid #ddd;
+                border-radius: 10px;
+                padding: 12px;
+                transition: border-color 160ms ease-in;
+            }
+            me.ready {
+                border-color: #16a34a;
+            }
+            me .message {
+                margin: 0;
+                opacity: 0.85;
+            }
+        }
+
+        view
+    }
+}
+
+struct Page;
+
+impl Render for Page {
+    fn render(&self) -> Markup {
+        html! {
+            head {
+                // Inject bundled `surreal.js` + `css-scope-inline.js`.
+                (surreal_scope_inline!())
+            }
+            body {
+                (StatusCard { message: "All systems operational" })
+            }
         }
     }
 }
@@ -91,13 +100,30 @@ fn page() -> maud::Markup {
 inside that root element automatically.
 
 ```rust
-use maud_extensions::component;
+use maud::{Markup, Render};
+use maud_extensions::{component, css, js};
 
-let view = component! {
-    section class="card" {
-        p { "Hello" }
+struct Card;
+
+impl Render for Card {
+    fn render(&self) -> Markup {
+        js! {
+            me().class_add("ready");
+        }
+
+        let view = component! {
+            section class="card" {
+                p { "Hello" }
+            }
+        };
+
+        css! {
+            me { border: 1px solid #ddd; }
+        }
+
+        view
     }
-};
+}
 ```
 
 Equivalent output shape:
@@ -129,7 +155,7 @@ Need custom files instead? Use `js_file!` / `css_file!` (`include_str!` behavior
 use maud_extensions::js_file;
 
 maud::html! {
-    (js_file!("static/vendor/custom-runtime.js"))
+    (js_file!(concat!(env!("CARGO_MANIFEST_DIR"), "/static/vendor/custom-runtime.js")))
 }
 ```
 
@@ -176,7 +202,10 @@ if you use these macros.
 use maud_extensions::font_face;
 
 maud::html! {
-    (font_face!("static/fonts/JetBrainsMono.woff2", "JetBrains Mono"))
+    (font_face!(
+        "../static/fonts/JetBrainsMono.woff2",
+        "JetBrains Mono"
+    ))
 }
 ```
 
