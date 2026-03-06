@@ -4,11 +4,14 @@ use quote::quote;
 use swc_common::{FileName, SourceMap};
 use swc_ecma_parser::{EsSyntax, Parser, StringInput, Syntax};
 use syn::{
-    LitStr, Result, Token,
-    parse::{Parse, ParseStream},
+    Expr, LitStr, Result, Token,
+    parse::{Nothing, Parse, ParseStream},
     parse_macro_input,
     punctuated::Punctuated,
 };
+
+const SURREAL_JS_BUNDLE: &str = include_str!("../assets/surreal.js");
+const CSS_SCOPE_INLINE_JS_BUNDLE: &str = include_str!("../assets/css-scope-inline.js");
 
 enum JsInput {
     Literal(LitStr),
@@ -215,6 +218,53 @@ pub fn inline_css(input: TokenStream) -> TokenStream {
     let output = quote! {
         fn css() -> maud::Markup {
             ::maud_extensions::css! { #tokens }
+        }
+    };
+
+    TokenStream::from(output)
+}
+
+#[proc_macro]
+pub fn js_file(input: TokenStream) -> TokenStream {
+    let path = parse_macro_input!(input as Expr);
+    let output = quote! {
+        maud::html! {
+            script {
+                (maud::PreEscaped(include_str!(#path)))
+            }
+        }
+    };
+
+    TokenStream::from(output)
+}
+
+#[proc_macro]
+pub fn css_file(input: TokenStream) -> TokenStream {
+    let path = parse_macro_input!(input as Expr);
+    let output = quote! {
+        maud::html! {
+            style {
+                (maud::PreEscaped(include_str!(#path)))
+            }
+        }
+    };
+
+    TokenStream::from(output)
+}
+
+#[proc_macro]
+pub fn surreal_scope_inline(input: TokenStream) -> TokenStream {
+    let _ = parse_macro_input!(input as Nothing);
+    let surreal_js = LitStr::new(SURREAL_JS_BUNDLE, Span::call_site());
+    let css_scope_inline_js = LitStr::new(CSS_SCOPE_INLINE_JS_BUNDLE, Span::call_site());
+    let output = quote! {
+        maud::html! {
+            script {
+                (maud::PreEscaped(#surreal_js))
+            }
+            script {
+                (maud::PreEscaped(#css_scope_inline_js))
+            }
         }
     };
 

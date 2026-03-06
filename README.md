@@ -1,52 +1,177 @@
-# maud_extensions
+# maud-extensions
 
 [![crates.io](https://img.shields.io/crates/v/maud-extensions.svg)](https://crates.io/crates/maud-extensions)
 [![docs.rs](https://img.shields.io/docsrs/maud-extensions)](https://docs.rs/maud-extensions)
 [![license](https://img.shields.io/crates/l/maud-extensions.svg)](https://github.com/eboody/maud-extensions)
 
-Proc macros to simplify Maud views with inline CSS, JS, and font helpers.
+Proc macros for Maud that make inline CSS/JS and component-style authoring simpler.
+
+## Why use it?
+- Keep CSS and JS close to the Maud view where they are used.
+- Validate inline CSS (`css!`) and JS (`js!`) at compile time.
+- Use an SFC-like flow with `inline_js!` + markup + `inline_css!`.
+- Inline runtime files like `surreal.js` and `css-scope-inline.js` with one macro.
+- Embed fonts as base64 `@font-face` blocks.
+
+## Table of Contents
+- [Install](#install)
+- [Quick Start](#quick-start)
+- [SFC-Style Component Flow](#sfc-style-component-flow)
+- [Inject JS/CSS Files](#inject-jscss-files)
+- [Macro Reference](#macro-reference)
+- [CSS Scoping Pattern](#css-scoping-pattern)
+- [Font Helpers](#font-helpers)
+- [License](#license)
 
 ## Install
+
 ```bash
 cargo add maud-extensions
 ```
 
-## Quick start
-```rust
-use maud_extensions::{css, js};
+## Quick Start
 
-maud::html! {
-    div class="card" {
-        (css! {
-            me { padding: 8px; border: 1px solid #ddd; }
-            me em { color: #c00; }
-        })
-        p { "Inline CSS and JS" }
-        (js! {
-            me().class_add("ready");
-        })
+```rust
+use maud_extensions::{inline_css, inline_js, surreal_scope_inline};
+
+fn status_card(message: &str) -> maud::Markup {
+    inline_js! {
+        me().class_add("ready");
+    }
+
+    let view = maud::html! {
+        article class="status-card" {
+            h2 { "System status" }
+            p class="message" { (message) }
+            (js())
+            (css())
+        }
+    };
+
+    inline_css! {
+        me {
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            padding: 12px;
+            transition: border-color 160ms ease-in;
+        }
+        me.ready {
+            border-color: #16a34a;
+        }
+        me .message {
+            margin: 0;
+            opacity: 0.85;
+        }
+    }
+
+    view
+}
+
+fn page() -> maud::Markup {
+    maud::html! {
+        head {
+            // Inject bundled `surreal.js` + `css-scope-inline.js`.
+            (surreal_scope_inline!())
+        }
+        body {
+            (status_card("All systems operational"))
+        }
     }
 }
 ```
 
-## Macro overview
-- `css! { ... }` or `css!("...")`
-  - Emits a `<style>` block with raw CSS.
-  - Validates CSS using `cssparser`.
-- `js! { ... }` or `js!("...")`
-  - Emits a `<script>` block with raw JS.
-  - Validates JavaScript using `swc_ecma_parser`.
-- `inline_css! { ... }` and `inline_js! { ... }`
-  - Generate `fn css() -> maud::Markup` / `fn js() -> maud::Markup` helpers.
-- `font_face!` and `font_faces!`
-  - Inline font-face CSS as data URLs.
+## SFC-Style Component Flow
 
-## CSS scoping pattern
-These macros are often paired with a tiny JS scoper like
-[`css-scope-inline`](https://github.com/gnat/css-scope-inline). It rewrites
-selectors like `me { ... }` to a unique class on the parent element.
+You can structure a Maud component like a single-file component:
+- script at the top
+- template/markup in the middle
+- style at the bottom
 
-Example:
+```rust
+use maud_extensions::{inline_css, inline_js};
+
+fn profile_card() -> maud::Markup {
+    inline_js! {
+        me().class_add("hydrated");
+    }
+
+    let view = maud::html! {
+        article class="profile-card" {
+            h2 { "Maud component" }
+            p { "Script on top, markup in the middle, style at the bottom." }
+            (js())
+            (css())
+        }
+    };
+
+    inline_css! {
+        me {
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            padding: 12px;
+        }
+    }
+
+    view
+}
+```
+
+`inline_js!` and `inline_css!` generate local helpers:
+- `fn js() -> maud::Markup`
+- `fn css() -> maud::Markup`
+
+## Inject JS/CSS Files
+
+Use the bundled runtime macro when you want zero path setup:
+
+```rust
+use maud_extensions::surreal_scope_inline;
+
+maud::html! {
+    (surreal_scope_inline!())
+}
+```
+
+### Inject a single file
+
+Use file-include macros for your own custom files via Rust's `include_str!`
+behavior:
+
+```rust
+use maud_extensions::js_file;
+
+maud::html! {
+    (js_file!(concat!(env!("HOME"), "/code/eran_codes/crates/http/static/surreal.js")))
+}
+```
+
+`surreal_scope_inline!()` emits two `<script>` tags:
+- bundled `surreal.js`
+- bundled `css-scope-inline.js`
+
+## Macro Reference
+
+- `css! { ... }` / `css!("...")`
+  - Emit a `<style>` block.
+  - Validate CSS via `cssparser`.
+- `js! { ... }` / `js!("...")`
+  - Emit a `<script>` block.
+  - Validate JS via `swc_ecma_parser`.
+- `inline_css! { ... }` / `inline_js! { ... }`
+  - Generate local `css()` / `js()` helpers for SFC-style layout.
+- `css_file!("path")` / `js_file!("path")`
+  - Emit `<style>` / `<script>` tags from file contents.
+- `surreal_scope_inline!()`
+  - Emit bundled `surreal.js` and `css-scope-inline.js` without path setup.
+- `font_face!(...)` / `font_faces!(...)`
+  - Embed font files as base64 `@font-face` CSS.
+
+## CSS Scoping Pattern
+
+These macros pair well with
+[`css-scope-inline`](https://github.com/gnat/css-scope-inline), which rewrites
+selectors like `me { ... }` to a generated class on the current element.
+
 ```rust
 (css! {
     me { border: 1px dashed var(--accent); }
@@ -54,19 +179,11 @@ Example:
 })
 ```
 
-## Inline JS helpers
-The JS macro is format-preserving but may add spacing for token safety. It
-still emits valid JavaScript. The examples use
-[`surreal`](https://github.com/gnat/surreal) for the `me()` helper, but any
-inline script works.
+The examples use [`surreal`](https://github.com/gnat/surreal) for the `me()`
+helper, but any inline JS can be used.
 
-```rust
-(js! {
-    me().class_add("pinged");
-})
-```
+## Font Helpers
 
-## Font helpers
 `font_face!` and `font_faces!` embed font files as base64 data URLs. Because
 this macro expands at the call site, the consuming crate must include `base64`
 if you use these macros.
@@ -80,4 +197,5 @@ maud::html! {
 ```
 
 ## License
+
 MIT OR Apache-2.0
