@@ -6,9 +6,10 @@
 
 Proc macros for Maud that make inline CSS/JS and component-style authoring simpler.
 
-Pair this with [gnat/surreal](https://github.com/gnat/surreal) and
-[gnat/css-scope-inline](https://github.com/gnat/css-scope-inline) to get a lot
-of behavior from two tiny JS files.
+This crate includes bundled copies of
+[gnat/surreal](https://github.com/gnat/surreal) and
+[gnat/css-scope-inline](https://github.com/gnat/css-scope-inline). Check those
+repos to see what these two tiny JS files can do and how to use them.
 
 ## Why use it?
 - Keep CSS and JS close to the Maud view where they are used.
