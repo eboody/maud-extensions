@@ -20,12 +20,13 @@ repos to see what these two tiny JS files can do and how to use them.
 
 ## Table of Contents
 - [Install](#install)
+- [What's New in 0.3.x](#whats-new-in-03x)
 - [Quick Start](#quick-start)
 - [component!](#component)
 - [Runtime Injection](#runtime-injection)
 - [Macro Reference](#macro-reference)
-- [Migration (Breaking)](#migration-breaking)
 - [Font Helpers](#font-helpers)
+- [Migration Guide (0.2 -> 0.3)](#migration-guide-02---03)
 - [License](#license)
 
 ## Install
@@ -33,6 +34,14 @@ repos to see what these two tiny JS files can do and how to use them.
 ```bash
 cargo add maud-extensions
 ```
+
+## What's New in 0.3.x
+
+- New `component!` macro for auto-injecting `(js())` + `(css())` into one root element.
+- Swapped JS/CSS macro naming so `js!`/`css!` define local helpers and
+  `inline_js!`/`inline_css!` emit direct tags.
+- Bundled runtime helper `surreal_scope_inline!()` with no path setup.
+- Explicit compile-time shape checks for `component!` input.
 
 ## Quick Start
 
@@ -180,18 +189,6 @@ maud::html! {
 - `font_face!(...)` / `font_faces!(...)`
   - Embed font files as base64 `@font-face` CSS.
 
-## Migration (Breaking)
-
-The JS/CSS macro names were intentionally swapped.
-
-- old `js!` -> now `inline_js!`
-- old `css!` -> now `inline_css!`
-- old `inline_js!` -> now `js!`
-- old `inline_css!` -> now `css!`
-
-If you were manually placing `(js())` / `(css())` inside root markup, you can now
-switch to `component!` and remove those explicit calls.
-
 ## Font Helpers
 
 `font_face!` and `font_faces!` embed font files as base64 data URLs. Because
@@ -208,6 +205,62 @@ maud::html! {
     ))
 }
 ```
+
+## Migration Guide (0.2 -> 0.3)
+
+### 1. Rename JS/CSS macro usage
+
+The JS/CSS macro names were intentionally swapped:
+
+- old `js!` -> new `inline_js!`
+- old `css!` -> new `inline_css!`
+- old `inline_js!` -> new `js!`
+- old `inline_css!` -> new `css!`
+
+### 2. Move to `component!` for root injection
+
+Old pattern:
+
+```rust
+inline_js! { me().class_add("ready"); }
+let view = maud::html! {
+    article {
+        "Hello"
+        (js())
+        (css())
+    }
+};
+inline_css! { me { color: red; } }
+```
+
+New pattern:
+
+```rust
+js! { me().class_add("ready"); }
+let view = component! {
+    article {
+        "Hello"
+    }
+};
+css! { me { color: red; } }
+```
+
+### 3. Keep runtime scripts explicit in layout/page shell
+
+```rust
+maud::html! {
+    head {
+        (surreal_scope_inline!())
+    }
+}
+```
+
+### 4. Update assumptions in your codebase
+
+- `component!` requires exactly one top-level element with a body block.
+- `component!` expects `js()` and `css()` helpers in scope.
+- `font_face!`/`font_faces!` still require `base64` in the consuming crate.
+- `js_file!`/`css_file!` paths are resolved from the calling source file context.
 
 ## License
 
