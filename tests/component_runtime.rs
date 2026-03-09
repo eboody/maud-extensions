@@ -82,3 +82,25 @@ fn surreal_scope_inline_emits_bundled_scripts() {
     assert!(html.contains("Welcome to Surreal"));
     assert!(html.contains("CSS Scope Inline"));
 }
+
+#[test]
+fn component_allows_empty_js_and_css_helpers() {
+    fn empty_helpers() -> Markup {
+        js! {}
+
+        let view = component! {
+            div class="empty-helpers" {
+                "ok"
+            }
+        };
+
+        css! {}
+
+        view
+    }
+
+    let html = empty_helpers().into_string();
+    assert!(html.contains("<div class=\"empty-helpers\">"));
+    assert!(html.contains("<script></script>"));
+    assert!(html.contains("<style data-mx-css-id="));
+}

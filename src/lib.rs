@@ -1,5 +1,5 @@
 use proc_macro::TokenStream;
-use proc_macro2::{Delimiter, Group, Span, TokenStream as TokenStream2, TokenTree};
+use proc_macro2::{Delimiter, Group, Ident, Span, TokenStream as TokenStream2, TokenTree};
 use quote::quote;
 use swc_common::{FileName, SourceMap};
 use swc_ecma_parser::{EsSyntax, Parser, StringInput, Syntax};
@@ -12,6 +12,8 @@ use syn::{
 
 const SURREAL_JS_BUNDLE: &str = include_str!("../assets/surreal.js");
 const CSS_SCOPE_INLINE_JS_BUNDLE: &str = include_str!("../assets/css-scope-inline.js");
+const COMPONENT_JS_HELPER_FN: &str = "__maud_extensions_component_requires_js_macro_in_scope_can_be_empty";
+const COMPONENT_CSS_HELPER_FN: &str = "__maud_extensions_component_requires_css_macro_in_scope_can_be_empty";
 
 enum JsInput {
     Literal(LitStr),
@@ -102,9 +104,15 @@ fn expand_css_markup(css_input: CssInput) -> TokenStream {
 }
 
 fn expand_css_helper(tokens: TokenStream2) -> TokenStream {
+    let component_css_helper_ident = Ident::new(COMPONENT_CSS_HELPER_FN, Span::call_site());
     let output = quote! {
         fn css() -> maud::Markup {
             ::maud_extensions::inline_css! { #tokens }
+        }
+
+        #[doc(hidden)]
+        fn #component_css_helper_ident() -> maud::Markup {
+            css()
         }
     };
 
@@ -214,9 +222,15 @@ fn expand_js_markup(js_input: JsInput) -> TokenStream {
 }
 
 fn expand_js_helper(tokens: TokenStream2) -> TokenStream {
+    let component_js_helper_ident = Ident::new(COMPONENT_JS_HELPER_FN, Span::call_site());
     let output = quote! {
         fn js() -> maud::Markup {
             ::maud_extensions::inline_js! { #tokens }
+        }
+
+        #[doc(hidden)]
+        fn #component_js_helper_ident() -> maud::Markup {
+            js()
         }
     };
 
@@ -250,6 +264,8 @@ fn component_syntax_error() -> syn::Error {
 
 #[proc_macro]
 pub fn component(input: TokenStream) -> TokenStream {
+    let component_js_helper_ident = Ident::new(COMPONENT_JS_HELPER_FN, Span::call_site());
+    let component_css_helper_ident = Ident::new(COMPONENT_CSS_HELPER_FN, Span::call_site());
     let mut tokens: Vec<TokenTree> = TokenStream2::from(input).into_iter().collect();
 
     while matches!(
@@ -284,7 +300,7 @@ pub fn component(input: TokenStream) -> TokenStream {
     }
 
     let mut injected_body = root_group.stream();
-    injected_body.extend(quote! { (js()) (css()) });
+    injected_body.extend(quote! { (#component_js_helper_ident()) (#component_css_helper_ident()) });
     let mut updated_group = Group::new(Delimiter::Brace, injected_body);
     updated_group.set_span(root_group.span());
     let last_index = tokens.len() - 1;

@@ -1,0 +1,10 @@
+error[E0425]: cannot find function `__maud_extensions_component_requires_css_macro_in_scope_can_be_empty` in this scope
+  --> tests/ui/component_missing_css_helper.rs:8:13
+   |
+ 8 |       let _ = component! {
+   |  _____________^
+ 9 | |         div { "missing css helper" }
+10 | |     };
+   | |_____^ not found in this scope
+   |
+   = note: this error originates in the macro `component` (in Nightly builds, run with -Z macro-backtrace for more info)
