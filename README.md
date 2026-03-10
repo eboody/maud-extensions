@@ -164,7 +164,7 @@ named content is tagged with `.in_slot("name")`.
 
 ```rust
 use maud::{Markup, Render, html};
-use maud_extensions_runtime::{InSlotExt, WithChildrenExt, named_slot, slot};
+use maud_extensions_runtime::prelude::*;
 
 struct Card;
 
@@ -252,6 +252,9 @@ maud::html! {
 
 From `maud-extensions-runtime`:
 
+- `prelude::*`
+  - Re-exports `slot`, `named_slot`, `WithChildrenExt`, and `InSlotExt`.
+
 - `slot()`
   - Render default slot content for the current slotted component context.
 - `named_slot("name")`
@@ -296,7 +299,7 @@ html! {
 New:
 
 ```rust
-use maud_extensions_runtime::{named_slot, slot};
+use maud_extensions_runtime::prelude::*;
 
 html! {
     (slot())
@@ -310,7 +313,7 @@ Old:
 
 ```rust
 use maud_extensions::use_component;
-use maud_extensions_runtime::InSlotExt;
+use maud_extensions_runtime::prelude::*;
 
 html! {
     (use_component!(
@@ -326,7 +329,7 @@ html! {
 New:
 
 ```rust
-use maud_extensions_runtime::{InSlotExt, WithChildrenExt};
+use maud_extensions_runtime::prelude::*;
 
 html! {
     (Card.with_children(html! {

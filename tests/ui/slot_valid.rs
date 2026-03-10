@@ -1,5 +1,5 @@
 use maud::{Markup, Render, html};
-use maud_extensions_runtime::{InSlotExt, WithChildrenExt, named_slot, slot};
+use maud_extensions_runtime::prelude::*;
 
 struct Layout;
 

@@ -94,6 +94,10 @@ pub trait WithChildrenExt: Render + Sized {
 
 impl<T> WithChildrenExt for T where T: Render {}
 
+pub mod prelude {
+    pub use crate::{InSlotExt, WithChildrenExt, named_slot, slot};
+}
+
 pub fn slot() -> Markup {
     current_slot_html(|payload| payload.default_html.clone())
         .map(PreEscaped)
