@@ -1,0 +1,14 @@
+[package]
+name = "maud-extensions-runtime"
+version = "0.2.0"
+edition = "2024"
+description = "Runtime slot helpers for maud-extensions."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/eboody/maud-extensions"
+homepage = "https://github.com/eboody/maud-extensions"
+
+[lib]
+name = "maud_extensions_runtime"
+
+[dependencies]
+maud = "0.27"

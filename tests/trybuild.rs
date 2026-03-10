@@ -2,6 +2,7 @@
 fn component_ui() {
     let t = trybuild::TestCases::new();
     t.pass("tests/ui/component_valid.rs");
+    t.pass("tests/ui/slot_valid.rs");
     t.compile_fail("tests/ui/component_empty.rs");
     t.compile_fail("tests/ui/component_multiple_roots.rs");
     t.compile_fail("tests/ui/component_control_flow_root.rs");

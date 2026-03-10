@@ -20,12 +20,15 @@ repos to see what these two tiny JS files can do and how to use them.
 
 ## Table of Contents
 - [Install](#install)
-- [What's New in 0.3.x](#whats-new-in-03x)
+- [What's New in 0.4.x](#whats-new-in-04x)
 - [Quick Start](#quick-start)
 - [component!](#component)
+- [Slots](#slots)
 - [Runtime Injection](#runtime-injection)
 - [Macro Reference](#macro-reference)
+- [Runtime Slot API](#runtime-slot-api)
 - [Font Helpers](#font-helpers)
+- [Migration Guide (0.3 -> 0.4)](#migration-guide-03---04)
 - [Migration Guide (0.2 -> 0.3)](#migration-guide-02---03)
 - [License](#license)
 
@@ -33,15 +36,18 @@ repos to see what these two tiny JS files can do and how to use them.
 
 ```bash
 cargo add maud-extensions
+cargo add maud-extensions-runtime # needed for slots + `.in_slot("name")`
 ```
 
-## What's New in 0.3.x
+## What's New in 0.4.x
 
 - New `component!` macro for auto-injecting JS/CSS helpers into one root element.
 - Swapped JS/CSS macro naming so `js!`/`css!` define local helpers and
   `inline_js!`/`inline_css!` emit direct tags.
 - Bundled runtime helper `surreal_scope_inline!()` with no path setup.
 - Explicit compile-time shape checks for `component!` input.
+- Slot flow simplified to runtime APIs: `slot()`, `named_slot("...")`, and
+  `.with_children(...)` + `.in_slot("...")`.
 
 ## Quick Start
 
@@ -150,6 +156,55 @@ Rules:
 - if a helper is missing, the compiler error points at a required internal helper symbol;
   add the corresponding `js! { ... }` or `css! { ... }` call
 
+## Slots
+
+Use runtime slot functions inside your component template, then pass children
+through `.with_children(...)`. Unannotated children go to the default slot, and
+named content is tagged with `.in_slot("name")`.
+
+```rust
+use maud::{Markup, Render, html};
+use maud_extensions_runtime::{InSlotExt, WithChildrenExt, named_slot, slot};
+
+struct Card;
+
+impl Render for Card {
+    fn render(&self) -> Markup {
+        html! {
+            article class="card" {
+                header class="card-header" { (named_slot("header")) }
+                section class="card-body" { (slot()) }
+            }
+        }
+    }
+}
+
+struct CardHeader<'a> {
+    title: &'a str,
+}
+
+impl<'a> Render for CardHeader<'a> {
+    fn render(&self) -> Markup {
+        html! { h2 { (self.title) } }
+    }
+}
+
+let view = html! {
+    (Card.with_children(html! {
+        (CardHeader { title: "Status" }.in_slot("header"))
+        p { "All systems operational" }
+    }))
+};
+```
+
+Rules:
+- `slot()` renders the default slot.
+- `named_slot("name")` renders a named slot.
+- `.in_slot("name")` assigns a child component to that named slot.
+- `.with_children(html! { ... })` provides child content for slot resolution.
+- missing named slots render empty content.
+- extra provided named slots are ignored.
+
 ## Runtime Injection
 
 Use bundled runtime scripts with no filesystem setup:
@@ -193,6 +248,19 @@ maud::html! {
 - `font_face!(...)` / `font_faces!(...)`
   - Embed font files as base64 `@font-face` CSS.
 
+## Runtime Slot API
+
+From `maud-extensions-runtime`:
+
+- `slot()`
+  - Render default slot content for the current slotted component context.
+- `named_slot("name")`
+  - Render named slot content.
+- `WithChildrenExt::with_children(html! { ... })`
+  - Attach child content to a component value before rendering.
+- `InSlotExt::in_slot("name")`
+  - Mark child content for a named slot.
+
 ## Font Helpers
 
 `font_face!` and `font_faces!` embed font files as base64 data URLs. Because
@@ -207,6 +275,64 @@ maud::html! {
         "../static/fonts/JetBrainsMono.woff2",
         "JetBrains Mono"
     ))
+}
+```
+
+## Migration Guide (0.3 -> 0.4)
+
+### 1. Replace slot macros with runtime functions
+
+Old:
+
+```rust
+use maud_extensions::slot;
+
+html! {
+    (slot!())
+    (slot!("header"))
+}
+```
+
+New:
+
+```rust
+use maud_extensions_runtime::{named_slot, slot};
+
+html! {
+    (slot())
+    (named_slot("header"))
+}
+```
+
+### 2. Replace `use_component!` with `.with_children(...)`
+
+Old:
+
+```rust
+use maud_extensions::use_component;
+use maud_extensions_runtime::InSlotExt;
+
+html! {
+    (use_component!(
+        Card,
+        {
+            (Title.in_slot("header"))
+            p { "Body" }
+        }
+    ))
+}
+```
+
+New:
+
+```rust
+use maud_extensions_runtime::{InSlotExt, WithChildrenExt};
+
+html! {
+    (Card.with_children(html! {
+        (Title.in_slot("header"))
+        p { "Body" }
+    }))
 }
 ```
 

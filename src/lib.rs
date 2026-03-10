@@ -12,8 +12,10 @@ use syn::{
 
 const SURREAL_JS_BUNDLE: &str = include_str!("../assets/surreal.js");
 const CSS_SCOPE_INLINE_JS_BUNDLE: &str = include_str!("../assets/css-scope-inline.js");
-const COMPONENT_JS_HELPER_FN: &str = "__maud_extensions_component_requires_js_macro_in_scope_can_be_empty";
-const COMPONENT_CSS_HELPER_FN: &str = "__maud_extensions_component_requires_css_macro_in_scope_can_be_empty";
+const COMPONENT_JS_HELPER_FN: &str =
+    "__maud_extensions_component_requires_js_macro_in_scope_can_be_empty";
+const COMPONENT_CSS_HELPER_FN: &str =
+    "__maud_extensions_component_requires_css_macro_in_scope_can_be_empty";
 
 enum JsInput {
     Literal(LitStr),
