@@ -14,6 +14,7 @@ repos to see what these two tiny JS files can do and how to use them.
 ## Why use it?
 - Define component-local `js()` and `css()` helpers with `js!` / `css!`.
 - Wrap markup with `component!` and auto-inject JS/CSS helpers.
+- Add component lifecycle behavior with `@js-once` / `@js-always`.
 - Emit direct `<script>` / `<style>` blocks when needed.
 - Bundle `surreal.js` and `css-scope-inline.js` with zero path setup.
 - Embed fonts as base64 `@font-face` CSS.
@@ -23,6 +24,7 @@ repos to see what these two tiny JS files can do and how to use them.
 - [What's New in 0.4.x](#whats-new-in-04x)
 - [Quick Start](#quick-start)
 - [component!](#component)
+- [Lifecycle Cleanup](#lifecycle-cleanup)
 - [Slots](#slots)
 - [Runtime Injection](#runtime-injection)
 - [Macro Reference](#macro-reference)
@@ -46,6 +48,8 @@ cargo add maud-extensions-runtime # needed for slots + `.in_slot("name")`
   `inline_js!`/`inline_css!` emit direct tags.
 - Bundled runtime helper `surreal_scope_inline!()` with no path setup.
 - Explicit compile-time shape checks for `component!` input.
+- Optional `component!` JS mode directives: `@js-once` and `@js-always`.
+- Component-scoped JS cleanup helpers in bundled `surreal.js`.
 - Slot flow simplified to runtime APIs: `slot()`, `named_slot("...")`, and
   `.with_children(...)` + `.in_slot("...")`.
 
@@ -70,6 +74,7 @@ struct StatusCard<'a> {
 impl<'a> Render for StatusCard<'a> {
     fn render(&self) -> Markup {
         component! {
+            @js-once
             article class="status-card" {
                 h2 { "System status" }
                 p class="message" { (self.message) }
@@ -148,6 +153,8 @@ Equivalent output shape:
 - then `(css())`
 
 Rules:
+- optional directives are supported before the root element:
+  `@js-once` or `@js-always`
 - input must be exactly one top-level element with a `{ ... }` body
 - `js! { ... }` and `css! { ... }` must be present in scope (empty is valid: `js! {}` / `css! {}`)
 - a clean pattern is one component per module/file with `js!` above and `css!` below the `Render` impl
@@ -155,6 +162,55 @@ Rules:
 - invalid root shapes fail at compile time with guidance
 - if a helper is missing, the compiler error points at a required internal helper symbol;
   add the corresponding `js! { ... }` or `css! { ... }` call
+- `component!` roots include `data-mx-component` and `data-mx-js-mode`
+  attributes for runtime lifecycle behavior
+
+## Lifecycle Cleanup
+
+When `surreal_scope_inline!()` is present, component roots can register cleanup
+work and auto-track common side effects.
+
+```rust
+use maud::{Markup, Render};
+use maud_extensions::{component, css, js};
+
+js! {
+    const onResize = () => me().class_add("resized");
+    onWindow("resize", onResize);
+
+    const tick = interval(() => me().class_add("ping"), 1000);
+    me().cleanup(() => clearInterval(tick));
+
+    const observer = observeMutations(me(), () => {});
+    me().cleanup(() => observer && observer.disconnect());
+
+    // Auto-tracked: removed when the component root unmounts.
+    me("button").on("click", () => me().class_add("clicked"));
+}
+
+struct LifecycleDemo;
+
+impl Render for LifecycleDemo {
+    fn render(&self) -> Markup {
+        component! {
+            @js-once
+            section class="lifecycle-demo" {
+                button { "Click me" }
+            }
+        }
+    }
+}
+
+css! {}
+```
+
+Notes:
+- `@js-once` runs component JS once per root element.
+- `@js-always` (default) runs JS each time the script executes.
+- cleanup ownership is scoped to `component!` roots.
+- helpers available from bundled `surreal.js` include:
+  `cleanup`, `onWindow`, `onDocument`, `timeout`, `interval`,
+  and `observeMutations`.
 
 ## Slots
 
@@ -235,6 +291,7 @@ maud::html! {
   - Generate local `fn css() -> maud::Markup` and the hidden helper used by `component!`.
 - `component! { ... }`
   - Wrap one root element and inject helpers emitted by `js!` / `css!` at the end of its body.
+  - Supports optional top directives: `@js-once`, `@js-always`.
 - `inline_js! { ... }` / `inline_js!("...")`
   - Emit `<script>` markup directly.
   - Validate JS via `swc_ecma_parser`.

@@ -1,0 +1,11 @@
+error: component! directives must appear before the root element.
+  --> tests/ui/component_directive_after_root.rs:8:13
+   |
+ 8 |       let _ = component! {
+   |  _____________^
+ 9 | |         div { "bad" }
+10 | |         @js-once
+11 | |     };
+   | |_____^
+   |
+   = note: this error originates in the macro `component` (in Nightly builds, run with -Z macro-backtrace for more info)

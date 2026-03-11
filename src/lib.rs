@@ -16,6 +16,23 @@ const COMPONENT_JS_HELPER_FN: &str =
     "__maud_extensions_component_requires_js_macro_in_scope_can_be_empty";
 const COMPONENT_CSS_HELPER_FN: &str =
     "__maud_extensions_component_requires_css_macro_in_scope_can_be_empty";
+const COMPONENT_JS_MODE_ATTR: &str = "data-mx-js-mode";
+const COMPONENT_JS_RAN_ATTR: &str = "data-mx-js-ran";
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ComponentJsMode {
+    Always,
+    Once,
+}
+
+impl ComponentJsMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            ComponentJsMode::Always => "always",
+            ComponentJsMode::Once => "once",
+        }
+    }
+}
 
 enum JsInput {
     Literal(LitStr),
@@ -223,11 +240,63 @@ fn expand_js_markup(js_input: JsInput) -> TokenStream {
     TokenStream::from(output)
 }
 
-fn expand_js_helper(tokens: TokenStream2) -> TokenStream {
+fn expand_js_helper(js_input: JsInput) -> TokenStream {
     let component_js_helper_ident = Ident::new(COMPONENT_JS_HELPER_FN, Span::call_site());
+    let js_mode_attr = COMPONENT_JS_MODE_ATTR;
+    let js_ran_attr = COMPONENT_JS_RAN_ATTR;
+    let js_markup = match js_input {
+        JsInput::Literal(content) => {
+            let wrapped = format!(
+                "const __mx_script = document.currentScript;\n\
+                 const __mx_root = __mx_script && __mx_script.parentElement;\n\
+                 const __mx_mode = __mx_root ? __mx_root.getAttribute(\"{js_mode_attr}\") : null;\n\
+                 let __mx_should_run = true;\n\
+                 if (__mx_mode === \"once\" && __mx_root) {{\n\
+                 if (__mx_root.hasAttribute(\"{js_ran_attr}\")) {{\n\
+                 __mx_should_run = false;\n\
+                 }} else {{\n\
+                 __mx_root.setAttribute(\"{js_ran_attr}\", \"\");\n\
+                 }}\n\
+                 }}\n\
+                 if (__mx_should_run) {{\n\
+                 {}\n\
+                 }}",
+                content.value()
+            );
+            let wrapped_lit = LitStr::new(&wrapped, Span::call_site());
+            quote! {
+                ::maud_extensions::inline_js!(#wrapped_lit)
+            }
+        }
+        JsInput::Tokens(tokens) => {
+            let js_mode_attr = LitStr::new(js_mode_attr, Span::call_site());
+            let js_ran_attr = LitStr::new(js_ran_attr, Span::call_site());
+            quote! {
+                ::maud_extensions::inline_js! {
+                    const __mx_script = document.currentScript;
+                    const __mx_root = __mx_script && __mx_script.parentElement;
+                    const __mx_mode = __mx_root ? __mx_root.getAttribute(#js_mode_attr) : null;
+
+                    let __mx_should_run = true;
+                    if (__mx_mode === "once" && __mx_root) {
+                        if (__mx_root.hasAttribute(#js_ran_attr)) {
+                            __mx_should_run = false;
+                        } else {
+                            __mx_root.setAttribute(#js_ran_attr, "");
+                        }
+                    }
+
+                    if (__mx_should_run) {
+                        #tokens
+                    }
+                }
+            }
+        }
+    };
+
     let output = quote! {
         fn js() -> maud::Markup {
-            ::maud_extensions::inline_js! { #tokens }
+            #js_markup
         }
 
         #[doc(hidden)]
@@ -241,8 +310,8 @@ fn expand_js_helper(tokens: TokenStream2) -> TokenStream {
 
 #[proc_macro]
 pub fn js(input: TokenStream) -> TokenStream {
-    let tokens: TokenStream2 = input.into();
-    expand_js_helper(tokens)
+    let js_input = parse_macro_input!(input as JsInput);
+    expand_js_helper(js_input)
 }
 
 #[proc_macro]
@@ -260,8 +329,50 @@ pub fn inline_css(input: TokenStream) -> TokenStream {
 fn component_syntax_error() -> syn::Error {
     syn::Error::new(
         Span::call_site(),
-        "component! expects exactly one top-level element with a body block, e.g. component! { article { ... } }",
+        "component! expects optional directives first (`@js-once` or `@js-always`) followed by exactly one top-level element with a body block, e.g. component! { @js-once article { ... } }",
     )
+}
+
+fn component_directive_error(message: &str) -> syn::Error {
+    syn::Error::new(Span::call_site(), message)
+}
+
+fn is_punct(token: &TokenTree, ch: char) -> bool {
+    matches!(token, TokenTree::Punct(punct) if punct.as_char() == ch)
+}
+
+fn is_ident(token: &TokenTree, expected: &str) -> bool {
+    matches!(token, TokenTree::Ident(ident) if ident == expected)
+}
+
+fn parse_component_js_directive(tokens: &[TokenTree]) -> Result<(ComponentJsMode, usize)> {
+    if tokens.len() < 4 {
+        return Err(component_directive_error(
+            "component! directive is incomplete. Use `@js-once` or `@js-always`.",
+        ));
+    }
+
+    if !is_ident(&tokens[1], "js") || !is_punct(&tokens[2], '-') {
+        return Err(component_directive_error(
+            "unknown component! directive. Supported directives are `@js-once` and `@js-always`.",
+        ));
+    }
+
+    let mode = if is_ident(&tokens[3], "once") {
+        ComponentJsMode::Once
+    } else if is_ident(&tokens[3], "always") {
+        ComponentJsMode::Always
+    } else {
+        return Err(component_directive_error(
+            "unknown component! directive. Supported directives are `@js-once` and `@js-always`.",
+        ));
+    };
+
+    let mut consumed = 4usize;
+    if matches!(tokens.get(consumed), Some(token) if is_punct(token, ';')) {
+        consumed += 1;
+    }
+    Ok((mode, consumed))
 }
 
 #[proc_macro]
@@ -279,6 +390,44 @@ pub fn component(input: TokenStream) -> TokenStream {
 
     if tokens.is_empty() {
         return component_syntax_error().to_compile_error().into();
+    }
+
+    let mut js_mode = ComponentJsMode::Always;
+    let mut seen_mode_directive = false;
+    let mut consumed = 0usize;
+
+    while matches!(tokens.get(consumed), Some(token) if is_punct(token, '@')) {
+        let (mode, directive_len) = match parse_component_js_directive(&tokens[consumed..]) {
+            Ok(parsed) => parsed,
+            Err(err) => return err.to_compile_error().into(),
+        };
+
+        if seen_mode_directive {
+            return component_directive_error(
+                "component! accepts at most one JS mode directive (`@js-once` or `@js-always`).",
+            )
+            .to_compile_error()
+            .into();
+        }
+
+        js_mode = mode;
+        seen_mode_directive = true;
+        consumed += directive_len;
+    }
+
+    if consumed > 0 {
+        tokens.drain(0..consumed);
+    }
+
+    if tokens
+        .iter()
+        .any(|token| matches!(token, TokenTree::Punct(punct) if punct.as_char() == '@'))
+    {
+        return component_directive_error(
+            "component! directives must appear before the root element.",
+        )
+        .to_compile_error()
+        .into();
     }
 
     if !matches!(tokens.first(), Some(TokenTree::Ident(_))) {
@@ -307,6 +456,14 @@ pub fn component(input: TokenStream) -> TokenStream {
     updated_group.set_span(root_group.span());
     let last_index = tokens.len() - 1;
     tokens[last_index] = TokenTree::Group(updated_group);
+    let js_mode_lit = LitStr::new(js_mode.as_str(), Span::call_site());
+    tokens.splice(
+        last_index..last_index,
+        quote! {
+            data-mx-component=""
+            data-mx-js-mode=(#js_mode_lit)
+        },
+    );
 
     let root_tokens: TokenStream2 = tokens.into_iter().collect();
     let output = quote! {

@@ -13,7 +13,7 @@ struct SlotPayload {
 }
 
 thread_local! {
-    static SLOT_STACK: RefCell<Vec<SlotPayload>> = RefCell::new(Vec::new());
+    static SLOT_STACK: RefCell<Vec<SlotPayload>> = const { RefCell::new(Vec::new()) };
 }
 
 pub struct Slotted<T: Render> {
@@ -175,7 +175,7 @@ fn encode_slot_name(name: &str) -> String {
 }
 
 fn decode_slot_name(encoded_name: &str) -> Option<String> {
-    if encoded_name.is_empty() || encoded_name.len() % 2 != 0 {
+    if encoded_name.is_empty() || !encoded_name.len().is_multiple_of(2) {
         return None;
     }
 

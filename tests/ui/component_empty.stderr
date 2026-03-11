@@ -1,4 +1,4 @@
-error: component! expects exactly one top-level element with a body block, e.g. component! { article { ... } }
+error: component! expects optional directives first (`@js-once` or `@js-always`) followed by exactly one top-level element with a body block, e.g. component! { @js-once article { ... } }
  --> tests/ui/component_empty.rs:4:13
   |
 4 |     let _ = component! {};

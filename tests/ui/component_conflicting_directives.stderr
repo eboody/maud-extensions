@@ -1,0 +1,12 @@
+error: component! accepts at most one JS mode directive (`@js-once` or `@js-always`).
+  --> tests/ui/component_conflicting_directives.rs:8:13
+   |
+ 8 |       let _ = component! {
+   |  _____________^
+ 9 | |         @js-once
+10 | |         @js-always
+11 | |         div { "bad" }
+12 | |     };
+   | |_____^
+   |
+   = note: this error originates in the macro `component` (in Nightly builds, run with -Z macro-backtrace for more info)

@@ -5,6 +5,7 @@ let surreal = (function () {
 let $ = { // Convenience for internals.
     $: this, // Convenience for internals.
     plugins: [],
+    cleanupByRoot: window.mxCleanupByRoot ??= new Map(),
 
     // Table of contents and convenient call chaining sugar. For a familiar "jQuery like" syntax.
     // Check before adding new: https://youmightnotneedjquery.com/
@@ -27,10 +28,22 @@ let $ = { // Convenience for internals.
         e.styles        = (value) => { return $.styles(e, value) }
 
         // Events.
-        e.on            = (name, f) => { return $.on(e, name, f) }
-        e.off           = (name, f) => { return $.off(e, name, f) }
+        e.on            = (name, f, options) => { return $.on(e, name, f, options) }
+        e.off           = (name, f, options) => { return $.off(e, name, f, options) }
         e.offAll        = (name) => { return $.offAll(e, name) }
         e.off_all       = e.offAll // Alias
+        e.cleanup       = (f) => { return $.cleanup(e, f) }
+        e.onCleanup     = e.on_cleanup = e.cleanup // Alias
+        e.onWindow      = (name, f, options) => { return $.onWindow(name, f, options, e) }
+        e.on_window     = e.onWindow // Alias
+        e.onDocument    = (name, f, options) => { return $.onDocument(name, f, options, e) }
+        e.on_document   = e.onDocument // Alias
+        e.timeout       = (f, ms, ...args) => { return $.timeout(f, ms, e, ...args) }
+        e.setTimeout    = e.timeout // Alias
+        e.interval      = (f, ms, ...args) => { return $.interval(f, ms, e, ...args) }
+        e.setInterval   = e.interval // Alias
+        e.observeMutations = (target, callback, options) => { return $.observeMutations(target, callback, options, e) }
+        e.observe_mutations = e.observeMutations // Alias
         e.disable       = () => { return $.disable(e) }
         e.enable        = () => { return $.enable(e) }
         e.send          = (name, detail) => { return $.send(e, name, detail) }
@@ -46,6 +59,67 @@ let $ = { // Convenience for internals.
 
         e.hasSurreal = 1
         return e
+    },
+    componentRoot(e) {
+        if (!$.isNode(e) || e instanceof Document || typeof e.closest !== 'function') return null
+        return e.closest('[data-mx-component]')
+    },
+    scopeRoot(owner=undefined) {
+        if ($.isNodeList(owner)) owner = owner.length > 0 ? owner[0] : null
+        if ($.isNode(owner)) return $.componentRoot(owner)
+
+        const script = document.currentScript
+        if (!script || !script.parentElement) return null
+        return $.componentRoot(script.parentElement)
+    },
+    ensureCleanupScope(root) {
+        if (!$.isNode(root)) return null
+        let scope = $.cleanupByRoot.get(root)
+        if (!scope) {
+            scope = { disposers: new Set(), disposed: false }
+            $.cleanupByRoot.set(root, scope)
+        }
+        return scope
+    },
+    registerCleanup(root, disposer) {
+        if (typeof disposer !== 'function') return false
+        const scope = $.ensureCleanupScope(root)
+        if (!scope || scope.disposed) return false
+        scope.disposers.add(disposer)
+        return true
+    },
+    cleanupRoot(root) {
+        const scope = $.cleanupByRoot.get(root)
+        if (!scope || scope.disposed) return
+        scope.disposed = true
+        scope.disposers.forEach(disposer => {
+            try {
+                disposer()
+            } catch (err) {
+                console.warn('Surreal: cleanup disposer failed', err)
+            }
+        })
+        scope.disposers.clear()
+        $.cleanupByRoot.delete(root)
+    },
+    cleanupRemovedNode(node) {
+        if (!node || typeof node !== 'object') return
+        if (typeof node.matches === 'function' && node.matches('[data-mx-component]')) {
+            $.cleanupRoot(node)
+        }
+        if (typeof node.querySelectorAll === 'function') {
+            node.querySelectorAll('[data-mx-component]').forEach(root => { $.cleanupRoot(root) })
+        }
+    },
+    startCleanupObserver() {
+        if (window.mxCleanupObserver) return
+        if (typeof MutationObserver === 'undefined') return
+        window.mxCleanupObserver = new MutationObserver(mutations => {
+            mutations.forEach(mutation => {
+                mutation.removedNodes.forEach(node => { $.cleanupRemovedNode(node) })
+            })
+        })
+        window.mxCleanupObserver.observe(document.documentElement, { childList: true, subtree: true })
     },
     // me() will return a single element or null. Selector not needed if used with inline <script>
     // If you select many elements, me() will return the first.
@@ -85,7 +159,10 @@ let $ = { // Convenience for internals.
     // Remove element(s)
     remove(e) {
         if ($.isNodeList(e)) e.forEach(_ => { $.remove(_) })
-        if ($.isNode(e)) e.parentNode.removeChild(e)
+        if ($.isNode(e)) {
+            $.cleanupRemovedNode(e)
+            e.parentNode.removeChild(e)
+        }
         return // Special, end of chain.
     },
     // Add class to element(s).
@@ -133,20 +210,99 @@ let $ = { // Convenience for internals.
     // Match a sender: if (!event.target.matches(".selector")) return;
     //  https://developer.mozilla.org/en-US/docs/Web/API/Event
     //  Vanilla: document.querySelector(".thing").addEventListener("click", (e) => { alert("clicked") }
-    on(e, name, f) {
-        if ($.isNodeList(e)) e.forEach(_ => { $.on(_, name, f) })
-        if ($.isNode(e)) e.addEventListener(name, f)
+    on(e, name, f, options=undefined) {
+        if ($.isNodeList(e)) e.forEach(_ => { $.on(_, name, f, options) })
+        if ($.isNode(e)) {
+            e.addEventListener(name, f, options)
+            const root = $.componentRoot(e)
+            if (root) $.registerCleanup(root, () => { e.removeEventListener(name, f, options) })
+        }
         return e
     },
-    off(e, name, f) {
-        if ($.isNodeList(e)) e.forEach(_ => { $.off(_, name, f) })
-        if ($.isNode(e)) e.removeEventListener(name, f)
+    off(e, name, f, options=undefined) {
+        if ($.isNodeList(e)) e.forEach(_ => { $.off(_, name, f, options) })
+        if ($.isNode(e)) e.removeEventListener(name, f, options)
         return e
     },
     offAll(e) {
         if ($.isNodeList(e)) e.forEach(_ => { $.offAll(_) })
         if ($.isNode(e)) e.parentNode.replaceChild(e.cloneNode(true), e)
         return e
+    },
+    cleanup(ownerOrDisposer, disposer=undefined) {
+        let owner = ownerOrDisposer
+        let cleanupFn = disposer
+        if (typeof ownerOrDisposer === 'function' && disposer === undefined) {
+            owner = undefined
+            cleanupFn = ownerOrDisposer
+        }
+        if (typeof cleanupFn !== 'function') {
+            console.warn('Surreal: cleanup() requires a disposer function')
+            return owner
+        }
+
+        const root = $.scopeRoot(owner)
+        if (!root) {
+            console.warn('Surreal: cleanup() could not resolve a component root')
+            return owner
+        }
+        $.registerCleanup(root, cleanupFn)
+        return owner || root
+    },
+    onWindow(name, f, options=undefined, owner=undefined) {
+        if (typeof name !== 'string' || typeof f !== 'function') {
+            console.warn('Surreal: onWindow(name, fn[, options]) requires a string event name and function handler')
+            return window
+        }
+        window.addEventListener(name, f, options)
+        const root = $.scopeRoot(owner)
+        if (root) $.registerCleanup(root, () => { window.removeEventListener(name, f, options) })
+        return window
+    },
+    onDocument(name, f, options=undefined, owner=undefined) {
+        if (typeof name !== 'string' || typeof f !== 'function') {
+            console.warn('Surreal: onDocument(name, fn[, options]) requires a string event name and function handler')
+            return document
+        }
+        document.addEventListener(name, f, options)
+        const root = $.scopeRoot(owner)
+        if (root) $.registerCleanup(root, () => { document.removeEventListener(name, f, options) })
+        return document
+    },
+    timeout(f, ms=0, owner=undefined, ...args) {
+        if (typeof f !== 'function') {
+            console.warn('Surreal: timeout(fn[, ms]) requires a function')
+            return null
+        }
+        const id = setTimeout(f, ms, ...args)
+        const root = $.scopeRoot(owner)
+        if (root) $.registerCleanup(root, () => { clearTimeout(id) })
+        return id
+    },
+    interval(f, ms=0, owner=undefined, ...args) {
+        if (typeof f !== 'function') {
+            console.warn('Surreal: interval(fn[, ms]) requires a function')
+            return null
+        }
+        const id = setInterval(f, ms, ...args)
+        const root = $.scopeRoot(owner)
+        if (root) $.registerCleanup(root, () => { clearInterval(id) })
+        return id
+    },
+    observeMutations(target, callback, options={childList: true, subtree: true}, owner=undefined) {
+        if (!$.isNode(target) || typeof callback !== 'function') {
+            console.warn('Surreal: observeMutations(target, callback[, options]) requires a node/document target and function callback')
+            return null
+        }
+        if (typeof MutationObserver === 'undefined') {
+            console.warn('Surreal: MutationObserver is not available in this environment')
+            return null
+        }
+        const observer = new MutationObserver(callback)
+        observer.observe(target, options)
+        const root = $.scopeRoot(owner)
+        if (root) $.registerCleanup(root, () => { observer.disconnect() })
+        return observer
     },
     // Easy alternative to off(). Disables click, key, submit events.
     disable(e) {
@@ -234,6 +390,7 @@ let $ = { // Convenience for internals.
     },
 }
 // Finish up...
+$.startCleanupObserver()
 $.globalsAdd() // Full convenience.
 console.log("Surreal: Loaded.")
 return $
