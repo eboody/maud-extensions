@@ -7,6 +7,7 @@
 //! - `js!`, `css!`, and `component!` for file-scoped components
 //! - `inline_js!`, `inline_css!`, `js_file!`, and `css_file!` for direct asset injection
 //! - `surreal_scope_inline!()` for the bundled `surreal.js` and `css-scope-inline.js`
+//! - `signals_inline!()` and `surreal_scope_signals_inline!()` for bundled Signals helpers
 //! - `font_face!` and `font_faces!` for embedding font files as data URLs
 //!
 //! Support policy:
@@ -18,6 +19,8 @@
 //!   control-flow roots or every possible Maud token pattern.
 //! - `inline_js!` parses the emitted JavaScript with SWC before generating markup.
 //! - `inline_css!` performs a lightweight syntax check before forwarding the stylesheet as written.
+//! - Signals support stays JS-first: markup provides anchors, while `js!` owns signals and DOM
+//!   binding.
 //! - Slot helpers live in the companion `maud-extensions-runtime` crate.
 
 use proc_macro::TokenStream;
@@ -34,6 +37,8 @@ use syn::{
 
 const SURREAL_JS_BUNDLE: &str = include_str!("../assets/surreal.js");
 const CSS_SCOPE_INLINE_JS_BUNDLE: &str = include_str!("../assets/css-scope-inline.js");
+const SIGNALS_CORE_JS_BUNDLE: &str = include_str!("../assets/signals-core.min.js");
+const SIGNALS_ADAPTER_JS_BUNDLE: &str = include_str!("../assets/signals-adapter.js");
 const COMPONENT_JS_HELPER_FN: &str =
     "__maud_extensions_component_requires_js_macro_in_scope_can_be_empty";
 const COMPONENT_CSS_HELPER_FN: &str =
@@ -244,6 +249,24 @@ fn validate_css(css: &str) -> core::result::Result<(), String> {
             },
         }
     }
+}
+
+fn emit_script_bundles(bundles: impl IntoIterator<Item = &'static str>) -> TokenStream {
+    let bundles: Vec<LitStr> = bundles
+        .into_iter()
+        .map(|bundle| LitStr::new(bundle, Span::call_site()))
+        .collect();
+
+    quote! {
+        maud::html! {
+            #(
+                script {
+                    (maud::PreEscaped(#bundles))
+                }
+            )*
+        }
+    }
+    .into()
 }
 
 fn expand_js_markup(js_input: JsInput) -> TokenStream {
@@ -679,20 +702,56 @@ pub fn css_file(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn surreal_scope_inline(input: TokenStream) -> TokenStream {
     let _ = parse_macro_input!(input as Nothing);
-    let surreal_js = LitStr::new(SURREAL_JS_BUNDLE, Span::call_site());
-    let css_scope_inline_js = LitStr::new(CSS_SCOPE_INLINE_JS_BUNDLE, Span::call_site());
-    let output = quote! {
-        maud::html! {
-            script {
-                (maud::PreEscaped(#surreal_js))
-            }
-            script {
-                (maud::PreEscaped(#css_scope_inline_js))
-            }
-        }
-    };
+    emit_script_bundles([SURREAL_JS_BUNDLE, CSS_SCOPE_INLINE_JS_BUNDLE])
+}
 
-    TokenStream::from(output)
+/// Emits the bundled Signals core runtime plus the Maud adapter helpers.
+///
+/// This macro installs the `window.mx` namespace and the binder helpers used by the
+/// `surreal_scope_signals_inline!()` workflow.
+///
+/// ```rust
+/// use maud_extensions::signals_inline;
+///
+/// fn view() -> maud::Markup {
+///     maud::html! {
+///         head {
+///             (signals_inline!())
+///         }
+///     }
+/// }
+/// ```
+#[proc_macro]
+pub fn signals_inline(input: TokenStream) -> TokenStream {
+    let _ = parse_macro_input!(input as Nothing);
+    emit_script_bundles([SIGNALS_CORE_JS_BUNDLE, SIGNALS_ADAPTER_JS_BUNDLE])
+}
+
+/// Emits the bundled `surreal.js`, `css-scope-inline.js`, Signals core, and Maud Signals adapter.
+///
+/// This is the supported runtime include when a page uses `component!`, `js!`, and the Signals
+/// DOM binders together.
+///
+/// ```rust
+/// use maud_extensions::surreal_scope_signals_inline;
+///
+/// fn view() -> maud::Markup {
+///     maud::html! {
+///         head {
+///             (surreal_scope_signals_inline!())
+///         }
+///     }
+/// }
+/// ```
+#[proc_macro]
+pub fn surreal_scope_signals_inline(input: TokenStream) -> TokenStream {
+    let _ = parse_macro_input!(input as Nothing);
+    emit_script_bundles([
+        SURREAL_JS_BUNDLE,
+        CSS_SCOPE_INLINE_JS_BUNDLE,
+        SIGNALS_CORE_JS_BUNDLE,
+        SIGNALS_ADAPTER_JS_BUNDLE,
+    ])
 }
 
 fn validate_js(js: &str) -> core::result::Result<(), String> {

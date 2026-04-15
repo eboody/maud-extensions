@@ -1,5 +1,19 @@
 use maud::{DOCTYPE, Markup, html};
-use maud_extensions::{component, css, inline_css, inline_js, js, surreal_scope_inline};
+use maud_extensions::{
+    component, css, inline_css, inline_js, js, signals_inline, surreal_scope_inline,
+    surreal_scope_signals_inline,
+};
+
+fn assert_marker_order(haystack: &str, markers: &[&str]) {
+    let mut last = 0usize;
+    for marker in markers {
+        let index = haystack
+            .find(marker)
+            .unwrap_or_else(|| panic!("missing marker: {marker}"));
+        assert!(index >= last, "marker `{marker}` appeared out of order");
+        last = index;
+    }
+}
 
 #[test]
 fn component_injects_js_and_css_helpers_inside_root() {
@@ -87,6 +101,50 @@ fn surreal_scope_inline_emits_bundled_scripts() {
     assert!(html.contains("mxCleanupByRoot"));
     assert!(html.contains("onWindow"));
     assert!(html.contains("observeMutations"));
+}
+
+#[test]
+fn signals_inline_emits_signals_runtime_and_adapter() {
+    let html = html! {
+        (signals_inline!())
+    }
+    .into_string();
+
+    assert!(html.contains("<script>"));
+    assert!(html.contains("preactSignalsCore"));
+    assert!(html.contains("Maud Extensions Signals Adapter"));
+    assert!(html.contains("window.mx"));
+    assert!(html.contains("bindText"));
+    assert!(html.contains("bindShow"));
+    assert!(html.contains("window.me = wrappedMe"));
+    assert!(html.contains("window.any = wrappedAny"));
+    assert_marker_order(
+        &html,
+        &["preactSignalsCore", "Maud Extensions Signals Adapter"],
+    );
+}
+
+#[test]
+fn surreal_scope_signals_inline_emits_all_bundled_scripts_in_order() {
+    let html = html! {
+        (surreal_scope_signals_inline!())
+    }
+    .into_string();
+
+    assert!(html.contains("Welcome to Surreal"));
+    assert!(html.contains("CSS Scope Inline"));
+    assert!(html.contains("preactSignalsCore"));
+    assert!(html.contains("Maud Extensions Signals Adapter"));
+    assert!(html.contains("bindClass"));
+    assert_marker_order(
+        &html,
+        &[
+            "Welcome to Surreal",
+            "CSS Scope Inline",
+            "preactSignalsCore",
+            "Maud Extensions Signals Adapter",
+        ],
+    );
 }
 
 #[test]
@@ -180,4 +238,52 @@ fn js_literal_form_still_inlines_verbatim_js() {
 
     let html = literal_js().into_string();
     assert!(html.contains("literal-ready"));
+}
+
+#[test]
+fn component_page_can_include_combined_signals_runtime() {
+    fn counter() -> Markup {
+        js! {
+            const count = mx.signal(0);
+            me(".count").bindText(count);
+            me(".inc").on("click", () => count.value++);
+        }
+
+        let view = component! {
+            @js-once
+            section class="counter" {
+                span class="count" {}
+                button class="inc" type="button" { "+" }
+            }
+        };
+
+        css! {}
+
+        view
+    }
+
+    let html = html! {
+        head {
+            (surreal_scope_signals_inline!())
+        }
+        body {
+            (counter())
+        }
+    }
+    .into_string();
+
+    assert!(html.contains("data-mx-component"));
+    assert!(html.contains("mx.signal(0)"));
+    assert!(html.contains(".bindText(count)"));
+    assert!(html.contains("Maud Extensions Signals Adapter"));
+    assert!(html.contains("preactSignalsCore"));
+    assert_marker_order(
+        &html,
+        &[
+            "Welcome to Surreal",
+            "CSS Scope Inline",
+            "preactSignalsCore",
+            "Maud Extensions Signals Adapter",
+        ],
+    );
 }

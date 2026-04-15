@@ -4,12 +4,16 @@
 [![docs.rs](https://img.shields.io/docsrs/maud-extensions)](https://docs.rs/maud-extensions)
 [![license](https://img.shields.io/crates/l/maud-extensions.svg)](https://github.com/eboody/maud-extensions)
 
-Proc macros for Maud that make inline CSS/JS and component-style authoring simpler.
+Proc macros for Maud that make inline CSS/JS, component-style authoring, and
+small bundled browser runtimes simpler.
 
 This crate includes bundled copies of
-[gnat/surreal](https://github.com/gnat/surreal) and
-[gnat/css-scope-inline](https://github.com/gnat/css-scope-inline). Check those
-repos to see what these two tiny JS files can do and how to use them.
+[gnat/surreal](https://github.com/gnat/surreal),
+[gnat/css-scope-inline](https://github.com/gnat/css-scope-inline), and an
+optional bundled copy of
+[`@preact/signals-core`](https://github.com/preactjs/signals). Signals support
+stays JS-first: Maud markup provides anchors, while `js!` owns signals and DOM
+bindings.
 
 ## Why use it?
 - Define component-local `js()` and `css()` helpers with `js!` / `css!`.
@@ -17,6 +21,7 @@ repos to see what these two tiny JS files can do and how to use them.
 - Add component lifecycle behavior with `@js-once` / `@js-always`.
 - Emit direct `<script>` / `<style>` blocks when needed.
 - Bundle `surreal.js` and `css-scope-inline.js` with zero path setup.
+- Add client-side Signals binders without a JS bundler.
 - Embed fonts as base64 `@font-face` CSS.
 
 ## Table of Contents
@@ -27,6 +32,7 @@ repos to see what these two tiny JS files can do and how to use them.
 - [Quick Start](#quick-start)
 - [component!](#component)
 - [Lifecycle Cleanup](#lifecycle-cleanup)
+- [Signals](#signals)
 - [Slots](#slots)
 - [Runtime Injection](#runtime-injection)
 - [Macro Reference](#macro-reference)
@@ -55,6 +61,8 @@ cargo add maud-extensions-runtime # needed for slots + `.in_slot("name")`
 - `component!` shape checks happen at compile time over the token stream the macro sees. It isn't a full Maud parser.
 - `inline_js!` parses emitted JavaScript with `swc_ecma_parser` before it generates markup.
 - `inline_css!` runs a lightweight CSS syntax check before it generates markup.
+- Signals binders are JS-first. Use markup for anchors and `js!` for signals, effects, and DOM binding.
+- Signals binders fail closed when the target is outside a `component!` root, because automatic cleanup is scoped to component roots.
 - `slot()` and `named_slot("...")` return empty markup outside `.with_children(...)`.
 - duplicate named slots are concatenated in render order.
 - malformed slot transport markers fail closed into default slot content instead of being partially consumed.
@@ -234,6 +242,60 @@ Notes:
   `cleanup`, `onWindow`, `onDocument`, `timeout`, `interval`,
   and `observeMutations`.
 
+## Signals
+
+Signals support is intentionally JS-first. Use Maud markup to render stable
+DOM anchors, then create signals and bind them in `js!`.
+
+```rust
+use maud::{Markup, Render, html};
+use maud_extensions::{component, css, js, surreal_scope_signals_inline};
+
+js! {
+    const count = mx.signal(0);
+    const active = mx.computed(() => count.value > 0);
+
+    me(".count").bindText(count);
+    me().bindClass("active", active);
+    me(".inc").on("click", () => count.value++);
+}
+
+struct Counter;
+
+impl Render for Counter {
+    fn render(&self) -> Markup {
+        component! {
+            @js-once
+            section class="counter" {
+                p { "Count: " span class="count" {} }
+                button class="inc" type="button" { "+" }
+            }
+        }
+    }
+}
+
+css! {
+    me.active { border-color: #16a34a; }
+}
+
+let page = html! {
+    head { (surreal_scope_signals_inline!()) }
+    body { (Counter) }
+};
+```
+
+Supported v1 binders:
+- `bindText(source)`
+- `bindAttr(name, source)`
+- `bindClass(name, source)`
+- `bindShow(source)`
+
+Rules:
+- `source` can be a Signals object like `mx.signal(...)` / `mx.computed(...)`, or a function.
+- function sources run inside `mx.effect(...)`, so dependencies are tracked automatically.
+- binders are exposed on `window.mx` and also added to Surreal-sugared elements like `me(".count")`.
+- component cleanup owns the binder effects, so bindings stop when the `component!` root leaves the DOM.
+
 ## Slots
 
 Use runtime slot functions inside your component template, then pass children
@@ -295,6 +357,30 @@ maud::html! {
 }
 ```
 
+Signals only:
+
+```rust
+use maud_extensions::signals_inline;
+
+maud::html! {
+    (signals_inline!())
+}
+```
+
+Full component stack with Signals binders:
+
+```rust
+use maud_extensions::surreal_scope_signals_inline;
+
+maud::html! {
+    (surreal_scope_signals_inline!())
+}
+```
+
+If you compose the runtime macros manually, emit `surreal_scope_inline!()`
+before `signals_inline!()` so the Signals adapter can patch Surreal before
+component `js!` blocks run.
+
 Need custom files instead? Use `js_file!` / `css_file!` (`include_str!` behavior):
 
 ```rust
@@ -324,6 +410,10 @@ maud::html! {
   - Emit `<script>` / `<style>` tags from file contents accepted by `include_str!`.
 - `surreal_scope_inline!()`
   - Emit bundled `surreal.js` and `css-scope-inline.js`.
+- `signals_inline!()`
+  - Emit bundled `@preact/signals-core` plus the Maud Signals adapter.
+- `surreal_scope_signals_inline!()`
+  - Emit bundled `surreal.js`, `css-scope-inline.js`, `@preact/signals-core`, and the Maud Signals adapter.
 - `font_face!(...)` / `font_faces!(...)`
   - Embed font files as base64 `@font-face` CSS.
 
