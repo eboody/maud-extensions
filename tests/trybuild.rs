@@ -7,12 +7,16 @@ fn component_ui() {
     t.pass("tests/ui/component_builder_valid.rs");
     t.pass("tests/ui/component_builder_fully_qualified_markup.rs");
     t.pass("tests/ui/component_builder_foreign_markup.rs");
+    t.pass("tests/ui/component_builder_repeated_markup.rs");
+    t.pass("tests/ui/component_builder_defaulted_repeated.rs");
+    t.pass("tests/ui/component_builder_defaulted_optional.rs");
     t.pass("tests/ui/component_builder_raw_identifier.rs");
     t.pass("tests/ui/slot_valid.rs");
     t.compile_fail("tests/ui/component_builder_missing_required.rs");
     t.compile_fail("tests/ui/component_builder_tuple_struct.rs");
     t.compile_fail("tests/ui/component_builder_duplicate_default_slot.rs");
     t.compile_fail("tests/ui/component_builder_each_non_vec.rs");
+    t.compile_fail("tests/ui/component_builder_raw_build.rs");
     t.compile_fail("tests/ui/component_empty.rs");
     t.compile_fail("tests/ui/component_multiple_roots.rs");
     t.compile_fail("tests/ui/component_control_flow_root.rs");

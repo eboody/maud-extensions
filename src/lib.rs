@@ -29,6 +29,7 @@ use quote::{format_ident, quote};
 use swc_common::{FileName, SourceMap};
 use swc_ecma_parser::{EsSyntax, Parser, StringInput, Syntax};
 use syn::{
+    ext::IdentExt,
     Data, DeriveInput, Expr, Fields, GenericParam, Generics, LitStr, Result, Token, Type, TypePath,
     parse::{Nothing, Parse, ParseStream},
     parse_macro_input, parse_quote,
@@ -1315,16 +1316,16 @@ fn parse_builder_attr(attrs: &[syn::Attribute]) -> syn::Result<BuilderAttr> {
 }
 
 fn classify_builder_field(ty: &Type, use_default: bool) -> BuilderFieldKind {
-    if use_default {
-        return BuilderFieldKind::Defaulted;
-    }
-
     if let Some(inner) = option_inner_ty(ty) {
         return BuilderFieldKind::Optional { inner };
     }
 
     if let Some(inner) = vec_inner_ty(ty) {
         return BuilderFieldKind::Repeated { inner };
+    }
+
+    if use_default {
+        return BuilderFieldKind::Defaulted;
     }
 
     BuilderFieldKind::Required
@@ -1367,7 +1368,7 @@ fn validate_builder_fields(fields: &[BuilderField]) -> syn::Result<()> {
     method_names.insert("build".to_string());
 
     for field in fields {
-        let field_method = field.ident.to_string();
+        let field_method = field.ident.unraw().to_string();
         if !method_names.insert(field_method.clone()) {
             return Err(syn::Error::new(
                 field.ident.span(),
@@ -1376,7 +1377,7 @@ fn validate_builder_fields(fields: &[BuilderField]) -> syn::Result<()> {
         }
 
         if let Some(each) = &field.builder.each_method {
-            let each_method = each.to_string();
+            let each_method = each.unraw().to_string();
             if !method_names.insert(each_method.clone()) {
                 return Err(syn::Error::new(
                     each.span(),
