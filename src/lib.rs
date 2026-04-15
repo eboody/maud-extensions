@@ -25,14 +25,15 @@
 
 use proc_macro::TokenStream;
 use proc_macro2::{Delimiter, Group, Ident, Span, TokenStream as TokenStream2, TokenTree};
-use quote::quote;
+use quote::{format_ident, quote};
 use swc_common::{FileName, SourceMap};
 use swc_ecma_parser::{EsSyntax, Parser, StringInput, Syntax};
 use syn::{
-    Expr, LitStr, Result, Token,
+    Data, DeriveInput, Expr, Fields, GenericParam, Generics, LitStr, Result, Token, Type, TypePath,
     parse::{Nothing, Parse, ParseStream},
-    parse_macro_input,
+    parse_macro_input, parse_quote,
     punctuated::Punctuated,
+    spanned::Spanned,
 };
 
 const SURREAL_JS_BUNDLE: &str = include_str!("../assets/surreal.js");
@@ -987,4 +988,812 @@ pub fn font_faces(input: TokenStream) -> TokenStream {
         maud::PreEscaped(css)
     }}
     .into()
+}
+
+#[derive(Clone)]
+enum BuilderFieldKind {
+    Required,
+    Optional { inner: Type },
+    Repeated { inner: Type },
+    Defaulted,
+}
+
+#[derive(Clone, Default)]
+struct SlotAttr {
+    is_slot: bool,
+    is_default: bool,
+}
+
+#[derive(Clone, Default)]
+struct BuilderAttr {
+    use_default: bool,
+    each_method: Option<Ident>,
+}
+
+#[derive(Clone)]
+enum BuilderInputMode {
+    Direct(Type),
+    RenderToMarkup,
+}
+
+#[derive(Clone)]
+struct BuilderField {
+    ident: Ident,
+    ty: Type,
+    kind: BuilderFieldKind,
+    slot: SlotAttr,
+    builder: BuilderAttr,
+    setter_input: BuilderInputMode,
+    repeated_item_input: Option<BuilderInputMode>,
+    state_ident: Option<Ident>,
+}
+
+/// Derives a typed builder for a named component struct.
+///
+/// Required fields are plain fields unless they use `Option<T>`, `Vec<T>`, or `#[builder(default)]`.
+/// The builder exposes one setter per field plus optional repeated-item setters from
+/// `#[builder(each = "item_name")]`. Fields written as `Markup`, `maud::Markup`, or
+/// `::maud::Markup` accept any `maud::Render` value in their generated setters.
+///
+/// Slot metadata can be declared with `#[slot]` and `#[slot(default)]` so the component contract
+/// is explicit before higher-level composition sugar exists.
+///
+/// ```rust
+/// use maud::{Markup, Render, html};
+/// use maud_extensions::ComponentBuilder;
+///
+/// #[derive(ComponentBuilder)]
+/// struct Card<'a> {
+///     title: &'a str,
+///     #[slot(optional)]
+///     header: Option<Markup>,
+///     #[slot(default)]
+///     body: Markup,
+/// }
+///
+/// impl<'a> Render for Card<'a> {
+///     fn render(&self) -> Markup {
+///         html! {
+///             article {
+///                 @if let Some(header) = &self.header {
+///                     header { (header) }
+///                 }
+///                 main { (self.body) }
+///             }
+///         }
+///     }
+/// }
+///
+/// fn view() -> Markup {
+///     Card::new()
+///         .title("Status")
+///         .header(html! { h2 { "Live" } })
+///         .body(html! { p { "All systems green" } })
+///         .build()
+///         .render()
+/// }
+/// ```
+#[proc_macro_derive(ComponentBuilder, attributes(builder, slot))]
+pub fn component_builder(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    expand_component_builder(input)
+}
+
+fn expand_component_builder(input: DeriveInput) -> TokenStream {
+    let ident = input.ident;
+    let vis = input.vis;
+    let generics = input.generics;
+
+    let Data::Struct(data_struct) = input.data else {
+        return syn::Error::new(
+            ident.span(),
+            "ComponentBuilder only supports structs with named fields.",
+        )
+        .to_compile_error()
+        .into();
+    };
+
+    let Fields::Named(fields_named) = data_struct.fields else {
+        return syn::Error::new(
+            ident.span(),
+            "ComponentBuilder only supports structs with named fields.",
+        )
+        .to_compile_error()
+        .into();
+    };
+
+    let parsed_fields = match fields_named
+        .named
+        .iter()
+        .map(parse_builder_field)
+        .collect::<syn::Result<Vec<_>>>()
+    {
+        Ok(fields) => fields,
+        Err(err) => return err.to_compile_error().into(),
+    };
+
+    if let Err(err) = validate_builder_fields(&parsed_fields) {
+        return err.to_compile_error().into();
+    }
+
+    let builder_ident = format_ident!("{ident}Builder");
+    let existing_args = generic_args_from_generics(&generics);
+
+    let required_fields: Vec<&BuilderField> = parsed_fields
+        .iter()
+        .filter(|field| matches!(field.kind, BuilderFieldKind::Required))
+        .collect();
+
+    let mut builder_generics = generics.clone();
+    for field in &required_fields {
+        let state_ident = field
+            .state_ident
+            .as_ref()
+            .expect("required fields always carry a state ident");
+        builder_generics
+            .params
+            .push(parse_quote!(const #state_ident: bool));
+    }
+
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let (_builder_impl_generics, _builder_ty_generics, builder_where_clause) =
+        builder_generics.split_for_impl();
+
+    let new_builder_ty = builder_type_tokens(
+        &builder_ident,
+        &existing_args,
+        required_fields.iter().map(|_| quote!(false)).collect(),
+    );
+
+    let builder_struct_fields = parsed_fields.iter().map(|field| {
+        let ident = &field.ident;
+        let storage_ty = builder_storage_ty(field);
+        quote! { #ident: #storage_ty }
+    });
+
+    let builder_init_fields = parsed_fields.iter().map(|field| {
+        let ident = &field.ident;
+        let init = builder_init_expr(field);
+        quote! { #ident: #init }
+    });
+
+    let component_new_impl = quote! {
+        impl #impl_generics #ident #ty_generics #where_clause {
+            #[must_use]
+            pub fn new() -> #new_builder_ty {
+                #builder_ident {
+                    #(#builder_init_fields),*
+                }
+            }
+
+            #[must_use]
+            pub fn builder() -> #new_builder_ty {
+                Self::new()
+            }
+        }
+    };
+
+    let setters = parsed_fields
+        .iter()
+        .map(|field| {
+            let method = expand_builder_field_setter(
+                &builder_ident,
+                &existing_args,
+                &builder_generics,
+                &parsed_fields,
+                &required_fields,
+                field,
+            );
+            let each = expand_builder_each_setter(
+                &builder_ident,
+                &existing_args,
+                &builder_generics,
+                &parsed_fields,
+                &required_fields,
+                field,
+            );
+
+            quote! {
+                #method
+                #each
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let build_impl = expand_builder_build_impl(
+        &ident,
+        &builder_ident,
+        &generics,
+        &existing_args,
+        &parsed_fields,
+        &required_fields,
+    );
+
+    let output = quote! {
+        #vis struct #builder_ident #builder_generics #builder_where_clause {
+            #(#builder_struct_fields),*
+        }
+
+        #component_new_impl
+        #(#setters)*
+        #build_impl
+    };
+
+    output.into()
+}
+
+fn parse_builder_field(field: &syn::Field) -> syn::Result<BuilderField> {
+    let ident = field
+        .ident
+        .clone()
+        .ok_or_else(|| syn::Error::new(field.span(), "ComponentBuilder requires named fields."))?;
+
+    let slot = parse_slot_attr(&field.attrs)?;
+    let builder = parse_builder_attr(&field.attrs)?;
+    let kind = classify_builder_field(&field.ty, builder.use_default);
+    let setter_input = match &kind {
+        BuilderFieldKind::Repeated { .. } => BuilderInputMode::Direct(field.ty.clone()),
+        _ => setter_input_mode(&field.ty, &kind),
+    };
+    let repeated_item_input = repeated_item_input_mode(&kind);
+    let state_ident = matches!(kind, BuilderFieldKind::Required)
+        .then(|| format_ident!("__MAUD_EXTENSIONS_{}_SET", ident.to_string().to_uppercase()));
+
+    Ok(BuilderField {
+        ident,
+        ty: field.ty.clone(),
+        kind,
+        slot,
+        builder,
+        setter_input,
+        repeated_item_input,
+        state_ident,
+    })
+}
+
+fn parse_slot_attr(attrs: &[syn::Attribute]) -> syn::Result<SlotAttr> {
+    let mut slot = SlotAttr::default();
+
+    for attr in attrs {
+        if !attr.path().is_ident("slot") {
+            continue;
+        }
+
+        slot.is_slot = true;
+        if matches!(&attr.meta, syn::Meta::Path(_)) {
+            continue;
+        }
+
+        attr.parse_nested_meta(|meta| {
+            if meta.path.is_ident("default") {
+                slot.is_default = true;
+                return Ok(());
+            }
+
+            if meta.path.is_ident("optional") {
+                return Ok(());
+            }
+
+            Err(meta.error(
+                "unsupported slot attribute. Supported forms are `#[slot]` and `#[slot(default)]`.",
+            ))
+        })?;
+    }
+
+    Ok(slot)
+}
+
+fn parse_builder_attr(attrs: &[syn::Attribute]) -> syn::Result<BuilderAttr> {
+    let mut builder = BuilderAttr::default();
+
+    for attr in attrs {
+        if !attr.path().is_ident("builder") {
+            continue;
+        }
+
+        attr.parse_nested_meta(|meta| {
+            if meta.path.is_ident("default") {
+                builder.use_default = true;
+                return Ok(());
+            }
+
+            if meta.path.is_ident("each") {
+                let value = meta.value()?;
+                let lit: LitStr = value.parse()?;
+                builder.each_method = Some(Ident::new(&lit.value(), lit.span()));
+                return Ok(());
+            }
+
+            Err(meta.error(
+                "unsupported builder attribute. Supported forms are `#[builder(default)]` and `#[builder(each = \"item\")]`.",
+            ))
+        })?;
+    }
+
+    Ok(builder)
+}
+
+fn classify_builder_field(ty: &Type, use_default: bool) -> BuilderFieldKind {
+    if use_default {
+        return BuilderFieldKind::Defaulted;
+    }
+
+    if let Some(inner) = option_inner_ty(ty) {
+        return BuilderFieldKind::Optional { inner };
+    }
+
+    if let Some(inner) = vec_inner_ty(ty) {
+        return BuilderFieldKind::Repeated { inner };
+    }
+
+    BuilderFieldKind::Required
+}
+
+fn validate_builder_fields(fields: &[BuilderField]) -> syn::Result<()> {
+    let default_slots = fields.iter().filter(|field| field.slot.is_default).count();
+    if default_slots > 1 {
+        let duplicate = fields
+            .iter()
+            .find(|field| field.slot.is_default)
+            .expect("count verified");
+        return Err(syn::Error::new(
+            duplicate.ident.span(),
+            "ComponentBuilder allows at most one `#[slot(default)]` field.",
+        ));
+    }
+
+    for field in fields {
+        if field.builder.each_method.is_some()
+            && !matches!(field.kind, BuilderFieldKind::Repeated { .. })
+        {
+            return Err(syn::Error::new(
+                field.ident.span(),
+                "`#[builder(each = \"...\")]` only applies to `Vec<T>` fields.",
+            ));
+        }
+
+        if let Some(each) = &field.builder.each_method {
+            if each == &field.ident {
+                return Err(syn::Error::new(
+                    each.span(),
+                    "`#[builder(each = \"...\")]` must use a method name different from the field name.",
+                ));
+            }
+        }
+    }
+
+    let mut method_names = std::collections::BTreeSet::new();
+    method_names.insert("build".to_string());
+
+    for field in fields {
+        let field_method = field.ident.to_string();
+        if !method_names.insert(field_method.clone()) {
+            return Err(syn::Error::new(
+                field.ident.span(),
+                format!("duplicate generated builder method `{field_method}`."),
+            ));
+        }
+
+        if let Some(each) = &field.builder.each_method {
+            let each_method = each.to_string();
+            if !method_names.insert(each_method.clone()) {
+                return Err(syn::Error::new(
+                    each.span(),
+                    format!("duplicate generated builder method `{each_method}`."),
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn option_inner_ty(ty: &Type) -> Option<Type> {
+    generic_inner_ty(
+        ty,
+        &[
+            &["Option"],
+            &["std", "option", "Option"],
+            &["core", "option", "Option"],
+        ],
+    )
+}
+
+fn vec_inner_ty(ty: &Type) -> Option<Type> {
+    generic_inner_ty(
+        ty,
+        &[&["Vec"], &["std", "vec", "Vec"], &["alloc", "vec", "Vec"]],
+    )
+}
+
+fn generic_inner_ty(ty: &Type, accepted_paths: &[&[&str]]) -> Option<Type> {
+    let Type::Path(TypePath { qself: None, path }) = ty else {
+        return None;
+    };
+
+    if !path_matches_any(path, accepted_paths) {
+        return None;
+    }
+
+    let segment = path.segments.last()?;
+    let syn::PathArguments::AngleBracketed(args) = &segment.arguments else {
+        return None;
+    };
+
+    if args.args.len() != 1 {
+        return None;
+    }
+
+    let syn::GenericArgument::Type(inner) = args.args.first()? else {
+        return None;
+    };
+
+    Some(inner.clone())
+}
+
+fn is_markup_ty(ty: &Type) -> bool {
+    let Type::Path(TypePath { qself: None, path }) = ty else {
+        return false;
+    };
+
+    path_matches_any(path, &[&["Markup"], &["maud", "Markup"]])
+}
+
+fn path_matches_any(path: &syn::Path, accepted_paths: &[&[&str]]) -> bool {
+    accepted_paths
+        .iter()
+        .any(|segments| path_matches_segments(path, segments))
+}
+
+fn path_matches_segments(path: &syn::Path, expected_segments: &[&str]) -> bool {
+    if path.segments.len() != expected_segments.len() {
+        return false;
+    }
+
+    path.segments
+        .iter()
+        .zip(expected_segments.iter())
+        .all(|(segment, expected)| segment.ident == expected)
+}
+
+fn builder_storage_ty(field: &BuilderField) -> TokenStream2 {
+    match field.kind {
+        BuilderFieldKind::Required => {
+            let ty = &field.ty;
+            quote!(::core::option::Option<#ty>)
+        }
+        _ => {
+            let ty = &field.ty;
+            quote!(#ty)
+        }
+    }
+}
+
+fn builder_init_expr(field: &BuilderField) -> TokenStream2 {
+    match field.kind {
+        BuilderFieldKind::Required => quote!(::core::option::Option::None),
+        BuilderFieldKind::Optional { .. } => quote!(::core::option::Option::None),
+        BuilderFieldKind::Repeated { .. } => quote!(::std::vec::Vec::new()),
+        BuilderFieldKind::Defaulted => quote!(::core::default::Default::default()),
+    }
+}
+
+fn setter_input_mode(ty: &Type, kind: &BuilderFieldKind) -> BuilderInputMode {
+    match kind {
+        BuilderFieldKind::Required | BuilderFieldKind::Defaulted => {
+            if is_markup_ty(ty) {
+                BuilderInputMode::RenderToMarkup
+            } else {
+                BuilderInputMode::Direct(ty.clone())
+            }
+        }
+        BuilderFieldKind::Optional { inner } => {
+            if is_markup_ty(inner) {
+                BuilderInputMode::RenderToMarkup
+            } else {
+                BuilderInputMode::Direct(inner.clone())
+            }
+        }
+        BuilderFieldKind::Repeated { .. } => {
+            unreachable!("repeated fields use repeated_item_input_mode")
+        }
+    }
+}
+
+fn repeated_item_input_mode(kind: &BuilderFieldKind) -> Option<BuilderInputMode> {
+    let BuilderFieldKind::Repeated { inner } = kind else {
+        return None;
+    };
+
+    Some(if is_markup_ty(inner) {
+        BuilderInputMode::RenderToMarkup
+    } else {
+        BuilderInputMode::Direct(inner.clone())
+    })
+}
+
+fn generic_args_from_generics(generics: &Generics) -> Vec<TokenStream2> {
+    generics
+        .params
+        .iter()
+        .map(|param| match param {
+            GenericParam::Type(param) => {
+                let ident = &param.ident;
+                quote!(#ident)
+            }
+            GenericParam::Lifetime(param) => {
+                let lifetime = &param.lifetime;
+                quote!(#lifetime)
+            }
+            GenericParam::Const(param) => {
+                let ident = &param.ident;
+                quote!(#ident)
+            }
+        })
+        .collect()
+}
+
+fn builder_type_tokens(
+    builder_ident: &Ident,
+    existing_args: &[TokenStream2],
+    state_args: Vec<TokenStream2>,
+) -> TokenStream2 {
+    let mut all_args = existing_args.to_vec();
+    all_args.extend(state_args);
+
+    if all_args.is_empty() {
+        quote!(#builder_ident)
+    } else {
+        quote!(#builder_ident < #(#all_args),* >)
+    }
+}
+
+fn expand_builder_field_setter(
+    builder_ident: &Ident,
+    existing_args: &[TokenStream2],
+    builder_generics: &Generics,
+    fields: &[BuilderField],
+    required_fields: &[&BuilderField],
+    field: &BuilderField,
+) -> TokenStream2 {
+    let (impl_generics, _ty_generics, where_clause) = builder_generics.split_for_impl();
+    let method_ident = &field.ident;
+    let current_state_args = required_fields
+        .iter()
+        .map(|required| {
+            let state_ident = required
+                .state_ident
+                .as_ref()
+                .expect("required field state ident");
+            quote!(#state_ident)
+        })
+        .collect::<Vec<_>>();
+
+    let return_state_args = required_fields
+        .iter()
+        .map(|required| {
+            if required.ident == field.ident {
+                quote!(true)
+            } else {
+                let state_ident = required
+                    .state_ident
+                    .as_ref()
+                    .expect("required field state ident");
+                quote!(#state_ident)
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let current_ty = builder_type_tokens(builder_ident, existing_args, current_state_args);
+    let return_ty = builder_type_tokens(builder_ident, existing_args, return_state_args);
+    let rebuild_fields = fields.iter().map(|other| {
+        let ident = &other.ident;
+        if ident == &field.ident {
+            let value_expr = setter_value_expr(field);
+            quote!(#ident: #value_expr)
+        } else {
+            quote!(#ident: self.#ident)
+        }
+    });
+
+    let (arg_tokens, setter_prelude) = setter_arg_tokens(field);
+
+    quote! {
+        impl #impl_generics #current_ty #where_clause {
+            #[must_use]
+            pub fn #method_ident(self, #arg_tokens) -> #return_ty {
+                #setter_prelude
+                #builder_ident {
+                    #(#rebuild_fields),*
+                }
+            }
+        }
+    }
+}
+
+fn expand_builder_each_setter(
+    builder_ident: &Ident,
+    existing_args: &[TokenStream2],
+    builder_generics: &Generics,
+    fields: &[BuilderField],
+    required_fields: &[&BuilderField],
+    field: &BuilderField,
+) -> TokenStream2 {
+    let Some(each_ident) = &field.builder.each_method else {
+        return TokenStream2::new();
+    };
+
+    let (impl_generics, _ty_generics, where_clause) = builder_generics.split_for_impl();
+    let current_state_args = required_fields
+        .iter()
+        .map(|required| {
+            let state_ident = required
+                .state_ident
+                .as_ref()
+                .expect("required field state ident");
+            quote!(#state_ident)
+        })
+        .collect::<Vec<_>>();
+
+    let current_ty = builder_type_tokens(builder_ident, existing_args, current_state_args);
+    let repeated_field_ident = &field.ident;
+    let rebuild_fields = fields.iter().map(|other| {
+        let ident = &other.ident;
+        if ident == repeated_field_ident {
+            quote!(#ident: #repeated_field_ident)
+        } else {
+            quote!(#ident: self.#ident)
+        }
+    });
+
+    let (arg_tokens, push_expr) = each_setter_arg_tokens(field);
+
+    quote! {
+        impl #impl_generics #current_ty #where_clause {
+            #[must_use]
+            pub fn #each_ident(self, #arg_tokens) -> Self {
+                let mut #repeated_field_ident = self.#repeated_field_ident;
+                #push_expr
+                #builder_ident {
+                    #(#rebuild_fields),*
+                }
+            }
+        }
+    }
+}
+
+fn setter_arg_tokens(field: &BuilderField) -> (TokenStream2, TokenStream2) {
+    match &field.kind {
+        BuilderFieldKind::Repeated { .. } => match field
+            .repeated_item_input
+            .as_ref()
+            .expect("repeated fields always expose item input")
+        {
+            BuilderInputMode::Direct(inner) => (
+                quote!(values: impl ::core::iter::IntoIterator<Item = #inner>),
+                quote!(),
+            ),
+            BuilderInputMode::RenderToMarkup => (
+                quote!(values: impl ::core::iter::IntoIterator<Item = impl ::maud::Render>),
+                quote!(),
+            ),
+        },
+        _ => match &field.setter_input {
+            BuilderInputMode::Direct(ty) => (quote!(value: #ty), quote!()),
+            BuilderInputMode::RenderToMarkup => (quote!(value: impl ::maud::Render), quote!()),
+        },
+    }
+}
+
+fn setter_value_expr(field: &BuilderField) -> TokenStream2 {
+    match &field.kind {
+        BuilderFieldKind::Required => match &field.setter_input {
+            BuilderInputMode::Direct(_) => quote!(::core::option::Option::Some(value)),
+            BuilderInputMode::RenderToMarkup => {
+                quote!(::core::option::Option::Some(::maud::Render::render(&value)))
+            }
+        },
+        BuilderFieldKind::Optional { .. } => match &field.setter_input {
+            BuilderInputMode::Direct(_) => quote!(::core::option::Option::Some(value)),
+            BuilderInputMode::RenderToMarkup => {
+                quote!(::core::option::Option::Some(::maud::Render::render(&value)))
+            }
+        },
+        BuilderFieldKind::Repeated { .. } => match field
+            .repeated_item_input
+            .as_ref()
+            .expect("repeated fields always expose item input")
+        {
+            BuilderInputMode::Direct(_) => quote!(values.into_iter().collect()),
+            BuilderInputMode::RenderToMarkup => {
+                quote!(
+                    values
+                        .into_iter()
+                        .map(|value| ::maud::Render::render(&value))
+                        .collect()
+                )
+            }
+        },
+        BuilderFieldKind::Defaulted => match &field.setter_input {
+            BuilderInputMode::Direct(_) => quote!(value),
+            BuilderInputMode::RenderToMarkup => quote!(::maud::Render::render(&value)),
+        },
+    }
+}
+
+fn each_setter_arg_tokens(field: &BuilderField) -> (TokenStream2, TokenStream2) {
+    let repeated_field_ident = &field.ident;
+    match field
+        .repeated_item_input
+        .as_ref()
+        .expect("each setters only exist for repeated fields")
+    {
+        BuilderInputMode::Direct(inner) => (
+            quote!(value: #inner),
+            quote!(#repeated_field_ident.push(value);),
+        ),
+        BuilderInputMode::RenderToMarkup => (
+            quote!(value: impl ::maud::Render),
+            quote!(#repeated_field_ident.push(::maud::Render::render(&value));),
+        ),
+    }
+}
+
+fn expand_builder_build_impl(
+    component_ident: &Ident,
+    builder_ident: &Ident,
+    generics: &Generics,
+    existing_args: &[TokenStream2],
+    fields: &[BuilderField],
+    required_fields: &[&BuilderField],
+) -> TokenStream2 {
+    let component_ty = if existing_args.is_empty() {
+        quote!(#component_ident)
+    } else {
+        quote!(#component_ident < #(#existing_args),* >)
+    };
+
+    let complete_builder_ty = builder_type_tokens(
+        builder_ident,
+        existing_args,
+        required_fields.iter().map(|_| quote!(true)).collect(),
+    );
+
+    let build_fields = fields.iter().map(|field| {
+        let ident = &field.ident;
+        match field.kind {
+            BuilderFieldKind::Required => {
+                let field_name = ident.to_string();
+                quote! {
+                    #ident: #ident.expect(concat!(
+                        "ComponentBuilder state bug: missing required field `",
+                        #field_name,
+                        "` at build time."
+                    ))
+                }
+            }
+            _ => quote!(#ident: #ident),
+        }
+    });
+
+    let destructure_fields = fields.iter().map(|field| &field.ident);
+    let (impl_generics, _ty_generics, where_clause) = generics.split_for_impl();
+
+    quote! {
+        impl #impl_generics #complete_builder_ty #where_clause {
+            #[must_use]
+            pub fn build(self) -> #component_ty {
+                let Self { #(#destructure_fields),* } = self;
+                #component_ident {
+                    #(#build_fields),*
+                }
+            }
+        }
+
+        impl #impl_generics ::core::convert::From<#complete_builder_ty> for #component_ty #where_clause {
+            fn from(builder: #complete_builder_ty) -> Self {
+                builder.build()
+            }
+        }
+    }
 }

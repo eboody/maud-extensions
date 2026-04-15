@@ -1,0 +1,5 @@
+error: ComponentBuilder allows at most one `#[slot(default)]` field.
+ --> tests/ui/component_builder_duplicate_default_slot.rs:7:5
+  |
+7 |     body: Markup,
+  |     ^^^^
