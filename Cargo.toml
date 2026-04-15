@@ -1,6 +1,6 @@
 [package]
 name = "maud-extensions"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 rust-version = "1.85"
 description = "Component, inline CSS/JS, and font helper macros for Maud views."
@@ -31,5 +31,5 @@ syn = { version = "2.0.106", features = ["full"] }
 
 [dev-dependencies]
 maud = "0.27"
-maud-extensions-runtime = { version = "0.2.0", path = "maud-extensions-runtime" }
+maud-extensions-runtime = { version = "0.2.1", path = "maud-extensions-runtime" }
 trybuild = "1.0.112"

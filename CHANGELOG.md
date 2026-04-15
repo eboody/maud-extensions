@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-04-15
+
 ### Added
 
 - Added `#[derive(ComponentBuilder)]` for typed shell and layout components.
@@ -27,6 +29,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Reworked the README as a landing page around the actual crate workflows:
   `component!`, `ComponentBuilder`, Signals, runtime injection, and slots.
+- Reframed runtime slots as the lower-level transport layer and moved
+  `ComponentBuilder` into the default path for new shell/layout components.
 
 ### Fixed
 

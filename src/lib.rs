@@ -29,8 +29,8 @@ use quote::{format_ident, quote};
 use swc_common::{FileName, SourceMap};
 use swc_ecma_parser::{EsSyntax, Parser, StringInput, Syntax};
 use syn::{
-    ext::IdentExt,
     Data, DeriveInput, Expr, Fields, GenericParam, Generics, LitStr, Result, Token, Type, TypePath,
+    ext::IdentExt,
     parse::{Nothing, Parse, ParseStream},
     parse_macro_input, parse_quote,
     punctuated::Punctuated,
@@ -1013,7 +1013,7 @@ struct BuilderAttr {
 
 #[derive(Clone)]
 enum BuilderInputMode {
-    Direct(Type),
+    Direct(Box<Type>),
     RenderToMarkup,
 }
 
@@ -1234,7 +1234,7 @@ fn parse_builder_field(field_index: usize, field: &syn::Field) -> syn::Result<Bu
     let builder = parse_builder_attr(&field.attrs)?;
     let kind = classify_builder_field(&field.ty, builder.use_default);
     let setter_input = match &kind {
-        BuilderFieldKind::Repeated { .. } => BuilderInputMode::Direct(field.ty.clone()),
+        BuilderFieldKind::Repeated { .. } => BuilderInputMode::Direct(Box::new(field.ty.clone())),
         _ => setter_input_mode(&field.ty, &kind),
     };
     let repeated_item_input = repeated_item_input_mode(&kind);
@@ -1486,14 +1486,14 @@ fn setter_input_mode(ty: &Type, kind: &BuilderFieldKind) -> BuilderInputMode {
             if is_markup_ty(ty) {
                 BuilderInputMode::RenderToMarkup
             } else {
-                BuilderInputMode::Direct(ty.clone())
+                BuilderInputMode::Direct(Box::new(ty.clone()))
             }
         }
         BuilderFieldKind::Optional { inner } => {
             if is_markup_ty(inner) {
                 BuilderInputMode::RenderToMarkup
             } else {
-                BuilderInputMode::Direct(inner.clone())
+                BuilderInputMode::Direct(Box::new(inner.clone()))
             }
         }
         BuilderFieldKind::Repeated { .. } => {
@@ -1510,7 +1510,7 @@ fn repeated_item_input_mode(kind: &BuilderFieldKind) -> Option<BuilderInputMode>
     Some(if is_markup_ty(inner) {
         BuilderInputMode::RenderToMarkup
     } else {
-        BuilderInputMode::Direct(inner.clone())
+        BuilderInputMode::Direct(Box::new(inner.clone()))
     })
 }
 
