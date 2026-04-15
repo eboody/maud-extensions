@@ -15,7 +15,8 @@ RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features
 ```
 
 4. Re-read the README and rustdoc examples for drift.
-5. Confirm any user-visible bug fix ships with a regression test.
+5. Confirm vendored runtime assets are the intended versions when a release changes bundled JS.
+6. Confirm any user-visible bug fix ships with a regression test.
 
 ## Publishing
 

@@ -86,7 +86,12 @@ cargo add maud-extensions-runtime # needed for slots + `.in_slot("name")`
 This example shows the single-file component pattern: `js!` at the top,
 `component!` markup in `Render`, and `css!` at the bottom.
 
-Compile-tested versions of the core workflows live in [`examples/`](examples).
+Compile-tested versions of the core workflows live in [`examples/`](examples):
+- [`component_card.rs`](examples/component_card.rs)
+- [`runtime_injection.rs`](examples/runtime_injection.rs)
+- [`signals_counter.rs`](examples/signals_counter.rs)
+- [`slots.rs`](examples/slots.rs)
+- [`font_embedding.rs`](examples/font_embedding.rs)
 
 ```rust
 use maud::{html, Markup, Render};
