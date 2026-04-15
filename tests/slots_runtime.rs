@@ -1,4 +1,4 @@
-use maud::{Markup, Render, html};
+use maud::{Markup, PreEscaped, Render, html};
 use maud_extensions_runtime::prelude::*;
 
 struct Panel;
@@ -85,6 +85,28 @@ impl Render for SlotOutsideContext {
     }
 }
 
+struct EmptyNamePanel;
+
+impl Render for EmptyNamePanel {
+    fn render(&self) -> Markup {
+        html! {
+            div class="empty-name-panel" {
+                (named_slot(""))
+            }
+        }
+    }
+}
+
+struct RawMarkup {
+    html: &'static str,
+}
+
+impl Render for RawMarkup {
+    fn render(&self) -> Markup {
+        PreEscaped(self.html.to_string())
+    }
+}
+
 #[test]
 fn slots_route_default_and_named_children() {
     let rendered = html! {
@@ -152,4 +174,67 @@ fn nested_components_keep_slot_contexts_isolated() {
 fn slot_functions_outside_with_children_context_are_empty() {
     let rendered = SlotOutsideContext.render().into_string();
     assert!(rendered.contains("<div class=\"no-slots\"></div>"));
+}
+
+#[test]
+fn duplicate_named_slots_are_concatenated_in_order() {
+    let rendered = html! {
+        (Panel.with_children(html! {
+            (HeaderTitle { text: "First" }.in_slot("header"))
+            (HeaderTitle { text: "Second" }.in_slot("header"))
+            p { "Body" }
+        }))
+    }
+    .into_string();
+
+    assert!(rendered.contains("<header><h1>First</h1><h1>Second</h1></header>"));
+}
+
+#[test]
+fn empty_slot_names_round_trip() {
+    let rendered = html! {
+        (EmptyNamePanel.with_children(html! {
+            (HeaderTitle { text: "Blank" }.in_slot(""))
+        }))
+    }
+    .into_string();
+
+    assert!(rendered.contains("<div class=\"empty-name-panel\"><h1>Blank</h1></div>"));
+}
+
+#[test]
+fn marker_like_text_inside_slot_content_is_preserved() {
+    let rendered = html! {
+        (Panel.with_children(html! {
+            (RawMarkup {
+                html: "<!--maud-extensions-slot-end:v1:not-the-current-slot--><strong>safe</strong>",
+            }
+            .in_slot("header"))
+            p { "Body" }
+        }))
+    }
+    .into_string();
+
+    assert!(
+        rendered.contains(
+            "<header><!--maud-extensions-slot-end:v1:not-the-current-slot--><strong>safe</strong></header>"
+        )
+    );
+}
+
+#[test]
+fn malformed_transport_markers_fail_closed_into_default_slot() {
+    let rendered = html! {
+        (DefaultOnly.with_children(html! {
+            (RawMarkup {
+                html: "<!--maud-extensions-slot-start:v1:broken-->",
+            })
+            p { "Body" }
+        }))
+    }
+    .into_string();
+
+    assert!(rendered.contains(
+        "<div class=\"default-only\"><!--maud-extensions-slot-start:v1:broken--><p>Body</p></div>"
+    ));
 }

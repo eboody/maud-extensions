@@ -1,10 +1,31 @@
-use std::{cell::RefCell, collections::HashMap, fmt::Write as _};
+#![forbid(unsafe_code)]
+#![deny(missing_docs)]
+#![deny(rustdoc::broken_intra_doc_links)]
+//! Runtime slot helpers for `maud-extensions`.
+//!
+//! This crate owns the string-based slot transport used by `.with_children(...)`,
+//! `.in_slot(...)`, `slot()`, and `named_slot()`.
+//!
+//! Support policy:
+//! - MSRV: Rust 1.85
+//! - Supported Maud version: 0.27
+//!
+//! The runtime keeps slot parsing conservative. Malformed transport markers fail closed and the
+//! original HTML is preserved as default slot content instead of being partially consumed.
+
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    fmt::Write as _,
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 use maud::{Markup, PreEscaped, Render, html};
 
-const SLOT_START_PREFIX: &str = "<!--mx-slot-start:";
-const SLOT_START_SUFFIX: &str = "-->";
-const SLOT_END_MARKER: &str = "<!--mx-slot-end-->";
+const SLOT_START_PREFIX: &str = "<!--maud-extensions-slot-start:v1:";
+const SLOT_END_PREFIX: &str = "<!--maud-extensions-slot-end:v1:";
+const SLOT_MARKER_SEPARATOR: char = ':';
+const SLOT_MARKER_SUFFIX: &str = "-->";
 
 #[derive(Default)]
 struct SlotPayload {
@@ -16,12 +37,20 @@ thread_local! {
     static SLOT_STACK: RefCell<Vec<SlotPayload>> = const { RefCell::new(Vec::new()) };
 }
 
+static SLOT_MARKER_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+/// A renderable wrapper that assigns content to a named slot.
+///
+/// Most code should reach this type through [`InSlotExt::in_slot`] instead of constructing it
+/// directly.
 pub struct Slotted<T: Render> {
     value: T,
     slot_name: String,
 }
 
 impl<T: Render> Slotted<T> {
+    /// Creates a slotted wrapper around a renderable value.
+    #[must_use]
     pub fn new(value: T, slot_name: String) -> Self {
         Self { value, slot_name }
     }
@@ -29,21 +58,37 @@ impl<T: Render> Slotted<T> {
 
 impl<T: Render> Render for Slotted<T> {
     fn render(&self) -> Markup {
-        let mut start_marker =
-            String::with_capacity(SLOT_START_PREFIX.len() + self.slot_name.len() * 2 + 3);
+        let marker_id = next_slot_marker_id();
+        let mut start_marker = String::with_capacity(
+            SLOT_START_PREFIX.len() + marker_id.len() + self.slot_name.len() * 2 + 8,
+        );
         start_marker.push_str(SLOT_START_PREFIX);
+        start_marker.push_str(&marker_id);
+        start_marker.push(SLOT_MARKER_SEPARATOR);
         start_marker.push_str(&encode_slot_name(&self.slot_name));
-        start_marker.push_str(SLOT_START_SUFFIX);
+        start_marker.push_str(SLOT_MARKER_SUFFIX);
+
+        let mut end_marker = String::with_capacity(
+            SLOT_END_PREFIX.len() + marker_id.len() + SLOT_MARKER_SUFFIX.len(),
+        );
+        end_marker.push_str(SLOT_END_PREFIX);
+        end_marker.push_str(&marker_id);
+        end_marker.push_str(SLOT_MARKER_SUFFIX);
 
         html! {
             (PreEscaped(start_marker))
             (self.value.render())
-            (PreEscaped(SLOT_END_MARKER.to_string()))
+            (PreEscaped(end_marker))
         }
     }
 }
 
+/// Extension trait for assigning children to a named slot.
 pub trait InSlotExt: Render + Sized {
+    /// Tags the rendered value for `named_slot(slot_name)`.
+    ///
+    /// Slot names are opaque strings. Duplicate names are concatenated in render order.
+    #[must_use]
     fn in_slot(self, slot_name: &str) -> Slotted<Self> {
         Slotted::new(self, slot_name.to_string())
     }
@@ -51,12 +96,18 @@ pub trait InSlotExt: Render + Sized {
 
 impl<T> InSlotExt for T where T: Render {}
 
+/// A renderable wrapper that attaches child markup to a component before rendering it.
+///
+/// Most code should reach this type through [`WithChildrenExt::with_children`] instead of
+/// constructing it directly.
 pub struct SlottedComponent<T: Render> {
     component: T,
     children_html: String,
 }
 
 impl<T: Render> SlottedComponent<T> {
+    /// Creates a slotted component wrapper around a component and its children.
+    #[must_use]
     pub fn new(component: T, children: Markup) -> Self {
         Self {
             component,
@@ -67,7 +118,7 @@ impl<T: Render> SlottedComponent<T> {
 
 impl<T: Render> Render for SlottedComponent<T> {
     fn render(&self) -> Markup {
-        let payload = collect_slots_from_children(self.children_html.clone());
+        let payload = collect_slots_from_children(&self.children_html);
         SLOT_STACK.with(|stack| {
             stack.borrow_mut().push(payload);
         });
@@ -86,7 +137,10 @@ impl<T: Render> Render for SlottedComponent<T> {
     }
 }
 
+/// Extension trait for attaching slot-aware child markup to a renderable component.
 pub trait WithChildrenExt: Render + Sized {
+    /// Renders `children` into the slot transport expected by [`slot`] and [`named_slot`].
+    #[must_use]
     fn with_children(self, children: Markup) -> SlottedComponent<Self> {
         SlottedComponent::new(self, children)
     }
@@ -94,16 +148,26 @@ pub trait WithChildrenExt: Render + Sized {
 
 impl<T> WithChildrenExt for T where T: Render {}
 
+/// Common imports for slot-based component composition.
 pub mod prelude {
     pub use crate::{InSlotExt, WithChildrenExt, named_slot, slot};
 }
 
+/// Renders the default slot for the current slotted component context.
+///
+/// Outside `.with_children(...)`, this returns empty markup.
+#[must_use]
 pub fn slot() -> Markup {
     current_slot_html(|payload| payload.default_html.clone())
         .map(PreEscaped)
         .unwrap_or_else(empty_markup)
 }
 
+/// Renders a named slot for the current slotted component context.
+///
+/// Duplicate slot names are concatenated in render order. Outside `.with_children(...)`, this
+/// returns empty markup.
+#[must_use]
 pub fn named_slot(slot_name: &str) -> Markup {
     current_slot_html(|payload| payload.named_html.get(slot_name).cloned())
         .flatten()
@@ -122,7 +186,14 @@ fn empty_markup() -> Markup {
     PreEscaped(String::new())
 }
 
-fn collect_slots_from_children(children_html: String) -> SlotPayload {
+fn next_slot_marker_id() -> String {
+    format!(
+        "{:016x}",
+        SLOT_MARKER_COUNTER.fetch_add(1, Ordering::Relaxed)
+    )
+}
+
+fn collect_slots_from_children(children_html: &str) -> SlotPayload {
     let mut payload = SlotPayload::default();
     let mut cursor = 0usize;
 
@@ -132,19 +203,41 @@ fn collect_slots_from_children(children_html: String) -> SlotPayload {
             .default_html
             .push_str(&children_html[cursor..slot_marker_start]);
 
-        let encoded_name_start = slot_marker_start + SLOT_START_PREFIX.len();
-        let Some(name_end_rel) = children_html[encoded_name_start..].find(SLOT_START_SUFFIX) else {
+        let marker_content_start = slot_marker_start + SLOT_START_PREFIX.len();
+        let Some(marker_end_rel) = children_html[marker_content_start..].find(SLOT_MARKER_SUFFIX)
+        else {
             payload
                 .default_html
                 .push_str(&children_html[slot_marker_start..]);
             return payload;
         };
-        let encoded_name_end = encoded_name_start + name_end_rel;
-        let encoded_name = &children_html[encoded_name_start..encoded_name_end];
-        let slot_name = decode_slot_name(encoded_name).unwrap_or_else(|| encoded_name.to_string());
+        let marker_content_end = marker_content_start + marker_end_rel;
+        let marker_content = &children_html[marker_content_start..marker_content_end];
+        let Some((marker_id, encoded_name)) = marker_content.split_once(SLOT_MARKER_SEPARATOR)
+        else {
+            payload
+                .default_html
+                .push_str(&children_html[slot_marker_start..]);
+            return payload;
+        };
+        if marker_id.is_empty() {
+            payload
+                .default_html
+                .push_str(&children_html[slot_marker_start..]);
+            return payload;
+        }
 
-        let slot_content_start = encoded_name_end + SLOT_START_SUFFIX.len();
-        let Some(slot_end_rel) = children_html[slot_content_start..].find(SLOT_END_MARKER) else {
+        let slot_name = decode_slot_name(encoded_name).unwrap_or_else(|| encoded_name.to_string());
+        let slot_content_start = marker_content_end + SLOT_MARKER_SUFFIX.len();
+
+        let mut end_marker = String::with_capacity(
+            SLOT_END_PREFIX.len() + marker_id.len() + SLOT_MARKER_SUFFIX.len(),
+        );
+        end_marker.push_str(SLOT_END_PREFIX);
+        end_marker.push_str(marker_id);
+        end_marker.push_str(SLOT_MARKER_SUFFIX);
+
+        let Some(slot_end_rel) = children_html[slot_content_start..].find(&end_marker) else {
             payload
                 .default_html
                 .push_str(&children_html[slot_marker_start..]);
@@ -159,7 +252,7 @@ fn collect_slots_from_children(children_html: String) -> SlotPayload {
             .or_default()
             .push_str(slot_content);
 
-        cursor = slot_content_end + SLOT_END_MARKER.len();
+        cursor = slot_content_end + end_marker.len();
     }
 
     payload.default_html.push_str(&children_html[cursor..]);
@@ -175,7 +268,7 @@ fn encode_slot_name(name: &str) -> String {
 }
 
 fn decode_slot_name(encoded_name: &str) -> Option<String> {
-    if encoded_name.is_empty() || !encoded_name.len().is_multiple_of(2) {
+    if encoded_name.is_empty() || encoded_name.len() % 2 != 0 {
         return None;
     }
 

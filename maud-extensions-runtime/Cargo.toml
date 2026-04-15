@@ -2,6 +2,7 @@
 name = "maud-extensions-runtime"
 version = "0.2.0"
 edition = "2024"
+rust-version = "1.85"
 description = "Runtime slot helpers for maud-extensions."
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/eboody/maud-extensions"

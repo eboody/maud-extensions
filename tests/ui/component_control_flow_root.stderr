@@ -1,12 +1,5 @@
 error: unknown component! directive. Supported directives are `@js-once` and `@js-always`.
- --> tests/ui/component_control_flow_root.rs:5:13
+ --> tests/ui/component_control_flow_root.rs:6:10
   |
-5 |       let _ = component! {
-  |  _____________^
-6 | |         @if flag {
-7 | |             div { "x" }
-8 | |         }
-9 | |     };
-  | |_____^
-  |
-  = note: this error originates in the macro `component` (in Nightly builds, run with -Z macro-backtrace for more info)
+6 |         @if flag {
+  |          ^^

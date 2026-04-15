@@ -1,11 +1,5 @@
 error: unknown component! directive. Supported directives are `@js-once` and `@js-always`.
-  --> tests/ui/component_unknown_directive.rs:8:13
-   |
- 8 |       let _ = component! {
-   |  _____________^
- 9 | |         @foo-bar
-10 | |         div { "bad" }
-11 | |     };
-   | |_____^
-   |
-   = note: this error originates in the macro `component` (in Nightly builds, run with -Z macro-backtrace for more info)
+ --> tests/ui/component_unknown_directive.rs:9:10
+  |
+9 |         @foo-bar
+  |          ^^^

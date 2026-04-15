@@ -21,6 +21,8 @@ repos to see what these two tiny JS files can do and how to use them.
 
 ## Table of Contents
 - [Install](#install)
+- [Support Policy](#support-policy)
+- [Guarantees and Limits](#guarantees-and-limits)
 - [What's New in 0.4.x](#whats-new-in-04x)
 - [Quick Start](#quick-start)
 - [component!](#component)
@@ -41,6 +43,24 @@ cargo add maud-extensions
 cargo add maud-extensions-runtime # needed for slots + `.in_slot("name")`
 ```
 
+## Support Policy
+
+- MSRV: Rust 1.85
+- Supported Maud version: 0.27
+- CI runs the crate on stable and the MSRV
+
+## Guarantees and Limits
+
+- `component!` accepts one top-level Maud element with a body block.
+- `component!` shape checks happen at compile time over the token stream the macro sees. It isn't a full Maud parser.
+- `inline_js!` parses emitted JavaScript with `swc_ecma_parser` before it generates markup.
+- `inline_css!` runs a lightweight CSS syntax check before it generates markup.
+- `slot()` and `named_slot("...")` return empty markup outside `.with_children(...)`.
+- duplicate named slots are concatenated in render order.
+- malformed slot transport markers fail closed into default slot content instead of being partially consumed.
+- `js_file!` / `css_file!` accept paths that work with `include_str!`.
+- `font_face!` / `font_faces!` accept paths that work with `include_bytes!`.
+
 ## What's New in 0.4.x
 
 - New `component!` macro for auto-injecting JS/CSS helpers into one root element.
@@ -57,6 +77,8 @@ cargo add maud-extensions-runtime # needed for slots + `.in_slot("name")`
 
 This example shows the single-file component pattern: `js!` at the top,
 `component!` markup in `Render`, and `css!` at the bottom.
+
+Compile-tested versions of the core workflows live in [`examples/`](examples).
 
 ```rust
 use maud::{html, Markup, Render};
@@ -297,9 +319,9 @@ maud::html! {
   - Validate JS via `swc_ecma_parser`.
 - `inline_css! { ... }` / `inline_css!("...")`
   - Emit `<style>` markup directly.
-  - Validate CSS via `cssparser`.
+  - Run a lightweight CSS syntax check via `cssparser`.
 - `js_file!("path")` / `css_file!("path")`
-  - Emit `<script>` / `<style>` tags from file contents.
+  - Emit `<script>` / `<style>` tags from file contents accepted by `include_str!`.
 - `surreal_scope_inline!()`
   - Emit bundled `surreal.js` and `css-scope-inline.js`.
 - `font_face!(...)` / `font_faces!(...)`
@@ -323,16 +345,15 @@ From `maud-extensions-runtime`:
 
 ## Font Helpers
 
-`font_face!` and `font_faces!` embed font files as base64 data URLs. Because
-this macro expands at the call site, the consuming crate must include `base64`
-if you use these macros.
+`font_face!` and `font_faces!` embed font files as base64 data URLs without
+requiring an extra dependency in the consuming crate.
 
 ```rust
 use maud_extensions::font_face;
 
 maud::html! {
     (font_face!(
-        "../static/fonts/JetBrainsMono.woff2",
+        concat!(env!("CARGO_MANIFEST_DIR"), "/examples/assets/demo-font.woff2"),
         "JetBrains Mono"
     ))
 }
@@ -449,9 +470,9 @@ maud::html! {
 
 - `component!` requires exactly one top-level element with a body block.
 - `component!` expects `js!` and `css!` calls in scope (empty blocks are allowed).
-- defining `fn js()` / `fn css()` manually is not enough; use `js!` / `css!` so `component!` sees required helpers.
-- `font_face!`/`font_faces!` still require `base64` in the consuming crate.
-- `js_file!`/`css_file!` paths are resolved from the calling source file context.
+- defining `fn js()` / `fn css()` manually isn't enough; use `js!` / `css!` so `component!` sees required helpers.
+- `font_face!`/`font_faces!` embed data URLs without an extra dependency in the consuming crate.
+- `js_file!`/`css_file!` paths follow `include_str!` behavior.
 
 ## License
 
