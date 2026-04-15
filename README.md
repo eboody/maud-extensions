@@ -15,14 +15,16 @@ This crate has three main jobs:
   `#[derive(ComponentBuilder)]`
 
 Signals support stays JS-first: Maud markup provides anchors, while `js!`
-owns signals, effects, and DOM binding. Slot transport lives in the companion
-crate [`maud-extensions-runtime`](https://crates.io/crates/maud-extensions-runtime).
+owns signals, effects, and DOM binding. The companion crate
+[`maud-extensions-runtime`](https://crates.io/crates/maud-extensions-runtime)
+still provides the older string-based slot transport, but for new shell and
+layout components the preferred path is `ComponentBuilder`.
 
 ## Install
 
 ```bash
 cargo add maud-extensions
-cargo add maud-extensions-runtime # only needed for slot() / named_slot() / .with_children(...)
+cargo add maud-extensions-runtime # only needed for the lower-level runtime slot transport
 ```
 
 Support policy:
@@ -74,8 +76,9 @@ let page = html! {
 };
 ```
 
-Use `#[derive(ComponentBuilder)]` when the component is a typed shell with
-props and named content regions:
+Use `#[derive(ComponentBuilder)]` for new shell and layout components with
+props and named content regions. This is the preferred path when the regions
+can be expressed as typed fields:
 
 ```rust
 use maud::{html, Markup, Render};
@@ -133,8 +136,9 @@ let view = Card::new()
     .render();
 ```
 
-Use the runtime slot API from `maud-extensions-runtime` when the caller really
-owns open child structure and stringly slot names are acceptable:
+Use the runtime slot API from `maud-extensions-runtime` only when you really
+need open caller-owned child structure, or when you are keeping an existing
+slot-based component. This is the lower-level string-based transport layer:
 
 ```rust
 use maud::{Markup, Render, html};
@@ -163,7 +167,7 @@ let view = html! {
 
 ## `ComponentBuilder`
 
-`ComponentBuilder` is the builder-core layer for typed shell and layout
+`ComponentBuilder` is the preferred API for new typed shell and layout
 components. It doesn't try to invent new Maud syntax. It generates a normal
 Rust builder from the component struct you already want to render.
 
@@ -194,6 +198,24 @@ Current limits:
 - `.build()` is still required
 - there is no `compose!` macro or block syntax yet
 - the builder itself doesn't implement `Render`
+
+## Runtime Slots
+
+The runtime slot API is still supported, but it is no longer the aspirational
+surface for new shell and layout components.
+
+Why it exists:
+- it works for fully open caller-owned child structure
+- it keeps existing slot-based components working
+- it provides one generic transport path over plain `Render`
+
+Why it is lower-level:
+- slot names are stringly
+- child transport goes through `.with_children(...)`
+- the slot contract stays outside the type system
+- missing or extra named slots are runtime behavior, not builder-shape errors
+
+Use it when openness is the point. Otherwise prefer `ComponentBuilder`.
 
 ## Signals
 
@@ -279,13 +301,15 @@ Manual composition rule:
 ## Limits And Guarantees
 
 - `component!` performs compile-time shape checks over the token stream it
-  sees; it isn't a full Maud parser
+  sees; it only checks the token shape the macro can observe
 - `component!` accepts exactly one top-level element with a body block
 - `js!` and `css!` must both be in scope for `component!`, even if one is empty
 - `inline_js!` validates JavaScript with SWC before generating markup
 - `inline_css!` runs a lightweight CSS syntax check before generating markup
 - slot runtime helpers fail closed outside `.with_children(...)`
 - malformed slot transport markers fail closed into default-slot content
+- runtime slots are a lower-level transport layer; for new shell/layout
+  components prefer `ComponentBuilder`
 - `ComponentBuilder` observes lexical type forms, not full type resolution, so
   type aliases to `Markup`, `Option`, or `Vec` are treated as ordinary fields
 

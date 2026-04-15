@@ -1,6 +1,10 @@
 use maud::{Markup, Render, html};
 use maud_extensions_runtime::prelude::*;
 
+// Runtime slots are still supported for open caller-owned child structure.
+// For new typed shells/layouts, prefer `#[derive(ComponentBuilder)]` in
+// `maud-extensions` when the content regions can be expressed as fields.
+
 struct Card;
 
 impl Render for Card {

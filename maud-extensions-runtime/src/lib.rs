@@ -3,8 +3,13 @@
 #![deny(rustdoc::broken_intra_doc_links)]
 //! Runtime slot helpers for `maud-extensions`.
 //!
-//! This crate owns the string-based slot transport used by `.with_children(...)`,
-//! `.in_slot(...)`, `slot()`, and `named_slot()`.
+//! This crate owns the lower-level string-based slot transport used by
+//! `.with_children(...)`, `.in_slot(...)`, `slot()`, and `named_slot()`.
+//!
+//! Prefer `#[derive(ComponentBuilder)]` from `maud-extensions` for new shell
+//! and layout components when the content regions can be expressed as typed
+//! fields. Use this crate when you genuinely need open caller-owned child
+//! markup, or when you are keeping an existing slot-based component.
 //!
 //! Support policy:
 //! - MSRV: Rust 1.85
@@ -98,6 +103,9 @@ impl<T> InSlotExt for T where T: Render {}
 
 /// A renderable wrapper that attaches child markup to a component before rendering it.
 ///
+/// This is the transport hook that feeds `.with_children(...)` into the runtime
+/// slot stack read by [`slot`] and [`named_slot`].
+///
 /// Most code should reach this type through [`WithChildrenExt::with_children`] instead of
 /// constructing it directly.
 pub struct SlottedComponent<T: Render> {
@@ -138,6 +146,10 @@ impl<T: Render> Render for SlottedComponent<T> {
 }
 
 /// Extension trait for attaching slot-aware child markup to a renderable component.
+///
+/// This is the lower-level transport surface for runtime slots. Prefer
+/// `ComponentBuilder` from `maud-extensions` for new typed shell/layout
+/// components when the regions can be expressed as fields.
 pub trait WithChildrenExt: Render + Sized {
     /// Renders `children` into the slot transport expected by [`slot`] and [`named_slot`].
     #[must_use]
@@ -148,7 +160,7 @@ pub trait WithChildrenExt: Render + Sized {
 
 impl<T> WithChildrenExt for T where T: Render {}
 
-/// Common imports for slot-based component composition.
+/// Common imports for runtime slot-based component composition.
 pub mod prelude {
     pub use crate::{InSlotExt, WithChildrenExt, named_slot, slot};
 }
