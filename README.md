@@ -138,32 +138,10 @@ let view = Card::new()
 
 Use the runtime slot API from `maud-extensions-runtime` only when you really
 need open caller-owned child structure, or when you are keeping an existing
-slot-based component. This is the lower-level string-based transport layer:
-
-```rust
-use maud::{Markup, Render, html};
-use maud_extensions_runtime::prelude::*;
-
-struct Panel;
-
-impl Render for Panel {
-    fn render(&self) -> Markup {
-        html! {
-            article {
-                header { (named_slot("header")) }
-                main { (slot()) }
-            }
-        }
-    }
-}
-
-let view = html! {
-    (Panel.with_children(html! {
-        (html! { h2 { "Status" } }.in_slot("header"))
-        p { "Body content" }
-    }))
-};
-```
+slot-based component. That API is the lower-level string-based transport layer;
+see [examples/slots.rs](examples/slots.rs) and the
+[`maud-extensions-runtime` docs](https://docs.rs/maud-extensions-runtime)
+when you actually need it.
 
 ## `ComponentBuilder`
 
