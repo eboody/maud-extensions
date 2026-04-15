@@ -1105,7 +1105,8 @@ fn expand_component_builder(input: DeriveInput) -> TokenStream {
     let parsed_fields = match fields_named
         .named
         .iter()
-        .map(parse_builder_field)
+        .enumerate()
+        .map(|(index, field)| parse_builder_field(index, field))
         .collect::<syn::Result<Vec<_>>>()
     {
         Ok(fields) => fields,
@@ -1222,7 +1223,7 @@ fn expand_component_builder(input: DeriveInput) -> TokenStream {
     output.into()
 }
 
-fn parse_builder_field(field: &syn::Field) -> syn::Result<BuilderField> {
+fn parse_builder_field(field_index: usize, field: &syn::Field) -> syn::Result<BuilderField> {
     let ident = field
         .ident
         .clone()
@@ -1237,7 +1238,7 @@ fn parse_builder_field(field: &syn::Field) -> syn::Result<BuilderField> {
     };
     let repeated_item_input = repeated_item_input_mode(&kind);
     let state_ident = matches!(kind, BuilderFieldKind::Required)
-        .then(|| format_ident!("__MAUD_EXTENSIONS_{}_SET", ident.to_string().to_uppercase()));
+        .then(|| format_ident!("__MAUD_EXTENSIONS_REQUIRED_FIELD_{field_index}_SET"));
 
     Ok(BuilderField {
         ident,

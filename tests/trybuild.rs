@@ -7,6 +7,7 @@ fn component_ui() {
     t.pass("tests/ui/component_builder_valid.rs");
     t.pass("tests/ui/component_builder_fully_qualified_markup.rs");
     t.pass("tests/ui/component_builder_foreign_markup.rs");
+    t.pass("tests/ui/component_builder_raw_identifier.rs");
     t.pass("tests/ui/slot_valid.rs");
     t.compile_fail("tests/ui/component_builder_missing_required.rs");
     t.compile_fail("tests/ui/component_builder_tuple_struct.rs");
