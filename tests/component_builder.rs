@@ -80,7 +80,6 @@ fn component_builder_builds_required_optional_and_repeated_fields() {
         .body(html! { p { "All systems green" } })
         .action(ActionButton { label: "Retry" })
         .action(ActionButton { label: "Dismiss" })
-        .build()
         .render()
         .into_string();
 
@@ -92,6 +91,18 @@ fn component_builder_builds_required_optional_and_repeated_fields() {
             "<footer class=\"card-actions\"><button type=\"button\">Retry</button><button type=\"button\">Dismiss</button></footer>"
         )
     );
+}
+
+#[test]
+fn component_builder_still_builds_component_values() {
+    let built = Card::new()
+        .tone(CardTone::Warning)
+        .body(html! { p { "Built card" } })
+        .build();
+
+    let rendered = built.render().into_string();
+    assert!(rendered.contains("class=\"card warning\""));
+    assert!(rendered.contains("<p>Built card</p>"));
 }
 
 #[test]
@@ -108,4 +119,52 @@ fn component_builder_builder_alias_and_bulk_vec_setter_work() {
     assert!(rendered.contains("class=\"card warning\""));
     assert!(rendered.contains("<button type=\"button\">Acknowledge</button>"));
     assert!(!rendered.contains("card-header"));
+}
+
+#[derive(ComponentBuilder)]
+struct OptionalCard {
+    label: Option<&'static str>,
+    #[slot]
+    header: Option<Markup>,
+    #[slot(default)]
+    body: Markup,
+}
+
+impl Render for OptionalCard {
+    fn render(&self) -> Markup {
+        html! {
+            article {
+                @if let Some(label) = self.label {
+                    p class="label" { (label) }
+                }
+                @if let Some(header) = &self.header {
+                    header { (header) }
+                }
+                main { (self.body) }
+            }
+        }
+    }
+}
+
+#[test]
+fn component_builder_optional_fields_support_maybe_setters() {
+    let rendered = OptionalCard::new()
+        .maybe_label(Some("Heads up"))
+        .maybe_header(Some(html! { h2 { "Notice" } }))
+        .body(html! { "Body" })
+        .render()
+        .into_string();
+
+    assert!(rendered.contains("<p class=\"label\">Heads up</p>"));
+    assert!(rendered.contains("<header><h2>Notice</h2></header>"));
+
+    let rendered = OptionalCard::new()
+        .maybe_label(None)
+        .maybe_header(None)
+        .body(html! { "Body" })
+        .render()
+        .into_string();
+
+    assert!(!rendered.contains("class=\"label\""));
+    assert!(!rendered.contains("<header>"));
 }

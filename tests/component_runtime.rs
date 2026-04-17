@@ -287,3 +287,20 @@ fn component_page_can_include_combined_signals_runtime() {
         ],
     );
 }
+
+#[test]
+fn named_css_helper_emits_style_markup() {
+    fn named_css() -> Markup {
+        css! { "card_border", {
+            .card { border: 1px solid #ddd; }
+        } }
+
+        card_border()
+    }
+
+    let html = named_css().into_string();
+    assert!(html.contains("<style data-mx-css-id="));
+    assert!(html.contains(".card"));
+    assert!(html.contains("border"));
+    assert!(html.contains("#ddd"));
+}

@@ -6,6 +6,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-04-17
+
+### Added
+
+- Added consuming `.render()` on complete `ComponentBuilder` builders.
+- Added `maybe_<field>(Option<T>)` helpers for optional `ComponentBuilder`
+  fields.
+- Added named CSS helper support via `css! { "name", { ... } }`.
+
+### Changed
+
+- Updated README and rustdoc examples to match the generated
+  `ComponentBuilder` surface.
+
+### Fixed
+
+- Added compile-fail coverage for `ComponentBuilder` `.render()` and optional
+  `maybe_` helper name collisions.
+- Added compile-fail coverage for invalid named `css!` helper identifiers.
+
 ## [0.5.0] - 2026-04-15
 
 ### Added

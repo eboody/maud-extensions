@@ -98,6 +98,44 @@ impl Parse for CssInput {
     }
 }
 
+struct CssHelperInput {
+    helper_name: Option<LitStr>,
+    css: CssInput,
+}
+
+impl Parse for CssHelperInput {
+    fn parse(input: ParseStream) -> Result<Self> {
+        if input.peek(LitStr) && input.peek2(Token![,]) {
+            let helper_name: LitStr = input.parse()?;
+            input.parse::<Token![,]>()?;
+
+            let css = if input.peek(LitStr) {
+                CssInput::Literal(input.parse()?)
+            } else if input.peek(syn::token::Brace) {
+                let content;
+                syn::braced!(content in input);
+                CssInput::Tokens(content.parse()?)
+            } else {
+                CssInput::Tokens(input.parse()?)
+            };
+
+            if !input.is_empty() {
+                return Err(input.error("unexpected trailing tokens after named css! helper"));
+            }
+
+            Ok(Self {
+                helper_name: Some(helper_name),
+                css,
+            })
+        } else {
+            Ok(Self {
+                helper_name: None,
+                css: input.parse()?,
+            })
+        }
+    }
+}
+
 fn expand_css_markup(css_input: CssInput) -> TokenStream {
     let content_lit = match css_input {
         CssInput::Literal(content) => content,
@@ -145,26 +183,71 @@ fn expand_css_markup(css_input: CssInput) -> TokenStream {
     TokenStream::from(output)
 }
 
-fn expand_css_helper(tokens: TokenStream2) -> TokenStream {
-    let component_css_helper_ident = Ident::new(COMPONENT_CSS_HELPER_FN, Span::call_site());
-    let output = quote! {
-        fn css() -> maud::Markup {
-            ::maud_extensions::inline_css! { #tokens }
-        }
+fn parse_helper_ident(helper_name: LitStr, macro_name: &str) -> Result<Ident> {
+    let value = helper_name.value();
+    let parsed: TokenStream2 = value.parse().map_err(|_| {
+        syn::Error::new(
+            helper_name.span(),
+            format!("{macro_name}! helper name must be a valid Rust identifier string"),
+        )
+    })?;
 
-        #[doc(hidden)]
-        fn #component_css_helper_ident() -> maud::Markup {
-            css()
+    let mut tokens = parsed.into_iter();
+    match (tokens.next(), tokens.next()) {
+        (Some(TokenTree::Ident(mut ident)), None) => {
+            ident.set_span(helper_name.span());
+            Ok(ident)
+        }
+        _ => Err(syn::Error::new(
+            helper_name.span(),
+            format!("{macro_name}! helper name must be a valid Rust identifier string"),
+        )),
+    }
+}
+
+fn expand_css_helper(input: CssHelperInput) -> TokenStream {
+    let component_css_helper_ident = Ident::new(COMPONENT_CSS_HELPER_FN, Span::call_site());
+    let use_default_component_helper = input.helper_name.is_none();
+    let css_fn_ident = match input.helper_name {
+        Some(name) => match parse_helper_ident(name, "css") {
+            Ok(ident) => ident,
+            Err(err) => return err.to_compile_error().into(),
+        },
+        None => Ident::new("css", Span::call_site()),
+    };
+    let css_input = match input.css {
+        CssInput::Literal(content) => quote!(#content),
+        CssInput::Tokens(tokens) => quote!(#tokens),
+    };
+
+    let output = quote! {
+        fn #css_fn_ident() -> maud::Markup {
+            ::maud_extensions::inline_css!(#css_input)
         }
     };
 
-    TokenStream::from(output)
+    if use_default_component_helper {
+        TokenStream::from(quote! {
+            #output
+
+            #[doc(hidden)]
+            fn #component_css_helper_ident() -> maud::Markup {
+                #css_fn_ident()
+            }
+        })
+    } else {
+        TokenStream::from(output)
+    }
 }
 
-/// Generates a local `fn css() -> maud::Markup` helper for `component!`.
+/// Generates a local CSS helper for Maud markup.
 ///
 /// The macro accepts either a string literal or CSS-like tokens. Token input is flattened into a
 /// stylesheet string and checked for basic CSS syntax before it is emitted.
+///
+/// `css! { ... }` generates the default `fn css() -> maud::Markup` helper used by `component!`.
+/// `css! { "card_css", { ... } }` generates `fn card_css() -> maud::Markup` instead, which lets
+/// you define additional stylesheet helpers in the same scope.
 ///
 /// ```rust
 /// use maud_extensions::{component, css, js};
@@ -179,13 +262,17 @@ fn expand_css_helper(tokens: TokenStream2) -> TokenStream {
 ///     css! {
 ///         me { color: red; }
 ///     }
+///     css! { "card_border", {
+///         .card { border: 1px solid #ddd; }
+///     } }
+///     let _ = card_border();
 ///     markup
 /// }
 /// ```
 #[proc_macro]
 pub fn css(input: TokenStream) -> TokenStream {
-    let tokens: TokenStream2 = input.into();
-    expand_css_helper(tokens)
+    let input = parse_macro_input!(input as CssHelperInput);
+    expand_css_helper(input)
 }
 
 fn tokens_to_source(tokens: TokenStream2) -> String {
@@ -1029,12 +1116,23 @@ struct BuilderField {
     state_ident: Option<Ident>,
 }
 
+struct BuilderExpansionCtx<'a, 'b> {
+    builder_ident: &'a Ident,
+    existing_args: &'a [TokenStream2],
+    builder_generics: &'a Generics,
+    built_ident: &'a Ident,
+    built_field_ident: &'a Ident,
+    fields: &'a [BuilderField],
+    required_fields: &'a [&'b BuilderField],
+}
+
 /// Derives a typed builder for a named component struct.
 ///
 /// Required fields are plain fields unless they use `Option<T>`, `Vec<T>`, or `#[builder(default)]`.
-/// The builder exposes one setter per field plus optional repeated-item setters from
-/// `#[builder(each = "item_name")]`. Fields written as `Markup`, `maud::Markup`, or
-/// `::maud::Markup` accept any `maud::Render` value in their generated setters.
+/// The builder exposes one setter per field, `maybe_field(option)` helpers for optional fields
+/// using the field's exact `Option<T>` type, and optional repeated-item setters from
+/// `#[builder(each = "item_name")]`. Regular setters for fields written as `Markup`,
+/// `maud::Markup`, or `::maud::Markup` accept any `maud::Render` value.
 ///
 /// Slot metadata can be declared with `#[slot]` and `#[slot(default)]` so the component contract
 /// is explicit before higher-level composition sugar exists.
@@ -1070,7 +1168,6 @@ struct BuilderField {
 ///         .title("Status")
 ///         .header(html! { h2 { "Live" } })
 ///         .body(html! { p { "All systems green" } })
-///         .build()
 ///         .render()
 /// }
 /// ```
@@ -1120,6 +1217,9 @@ fn expand_component_builder(input: DeriveInput) -> TokenStream {
 
     let builder_ident = format_ident!("{ident}Builder");
     let existing_args = generic_args_from_generics(&generics);
+    let component_ty = component_type_tokens(&ident, &existing_args);
+    let built_ident = format_ident!("__Built");
+    let built_field_ident = format_ident!("__maud_extensions_built");
 
     let required_fields: Vec<&BuilderField> = parsed_fields
         .iter()
@@ -1136,6 +1236,9 @@ fn expand_component_builder(input: DeriveInput) -> TokenStream {
             .params
             .push(parse_quote!(const #state_ident: bool));
     }
+    builder_generics
+        .params
+        .push(parse_quote!(#built_ident = #component_ty));
 
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let (_builder_impl_generics, _builder_ty_generics, builder_where_clause) =
@@ -1145,6 +1248,7 @@ fn expand_component_builder(input: DeriveInput) -> TokenStream {
         &builder_ident,
         &existing_args,
         required_fields.iter().map(|_| quote!(false)).collect(),
+        None,
     );
 
     let builder_struct_fields = parsed_fields.iter().map(|field| {
@@ -1152,19 +1256,26 @@ fn expand_component_builder(input: DeriveInput) -> TokenStream {
         let storage_ty = builder_storage_ty(field);
         quote! { #ident: #storage_ty }
     });
+    let builder_marker_field = quote! {
+        #built_field_ident: ::core::marker::PhantomData<fn() -> #built_ident>
+    };
 
     let builder_init_fields = parsed_fields.iter().map(|field| {
         let ident = &field.ident;
         let init = builder_init_expr(field);
         quote! { #ident: #init }
     });
+    let builder_marker_init = quote! {
+        #built_field_ident: ::core::marker::PhantomData
+    };
 
     let component_new_impl = quote! {
         impl #impl_generics #ident #ty_generics #where_clause {
             #[must_use]
             pub fn new() -> #new_builder_ty {
                 #builder_ident {
-                    #(#builder_init_fields),*
+                    #(#builder_init_fields,)*
+                    #builder_marker_init
                 }
             }
 
@@ -1178,42 +1289,42 @@ fn expand_component_builder(input: DeriveInput) -> TokenStream {
     let setters = parsed_fields
         .iter()
         .map(|field| {
-            let method = expand_builder_field_setter(
-                &builder_ident,
-                &existing_args,
-                &builder_generics,
-                &parsed_fields,
-                &required_fields,
-                field,
-            );
-            let each = expand_builder_each_setter(
-                &builder_ident,
-                &existing_args,
-                &builder_generics,
-                &parsed_fields,
-                &required_fields,
-                field,
-            );
+            let ctx = BuilderExpansionCtx {
+                builder_ident: &builder_ident,
+                existing_args: &existing_args,
+                builder_generics: &builder_generics,
+                built_ident: &built_ident,
+                built_field_ident: &built_field_ident,
+                fields: &parsed_fields,
+                required_fields: &required_fields,
+            };
+            let method = expand_builder_field_setter(&ctx, field);
+            let maybe = expand_builder_optional_setter(&ctx, field);
+            let each = expand_builder_each_setter(&ctx, field);
 
             quote! {
                 #method
+                #maybe
                 #each
             }
         })
         .collect::<Vec<_>>();
 
-    let build_impl = expand_builder_build_impl(
-        &ident,
-        &builder_ident,
-        &generics,
-        &existing_args,
-        &parsed_fields,
-        &required_fields,
-    );
+    let build_ctx = BuilderExpansionCtx {
+        builder_ident: &builder_ident,
+        existing_args: &existing_args,
+        builder_generics: &builder_generics,
+        built_ident: &built_ident,
+        built_field_ident: &built_field_ident,
+        fields: &parsed_fields,
+        required_fields: &required_fields,
+    };
+    let build_impl = expand_builder_build_impl(&build_ctx, &ident, &generics, &component_ty);
 
     let output = quote! {
         #vis struct #builder_ident #builder_generics #builder_where_clause {
-            #(#builder_struct_fields),*
+            #(#builder_struct_fields,)*
+            #builder_marker_field
         }
 
         #component_new_impl
@@ -1366,6 +1477,7 @@ fn validate_builder_fields(fields: &[BuilderField]) -> syn::Result<()> {
 
     let mut method_names = std::collections::BTreeSet::new();
     method_names.insert("build".to_string());
+    method_names.insert("render".to_string());
 
     for field in fields {
         let field_method = field.ident.unraw().to_string();
@@ -1374,6 +1486,16 @@ fn validate_builder_fields(fields: &[BuilderField]) -> syn::Result<()> {
                 field.ident.span(),
                 format!("duplicate generated builder method `{field_method}`."),
             ));
+        }
+
+        if let Some(maybe) = optional_setter_ident(field) {
+            let maybe_method = maybe.unraw().to_string();
+            if !method_names.insert(maybe_method.clone()) {
+                return Err(syn::Error::new(
+                    maybe.span(),
+                    format!("duplicate generated builder method `{maybe_method}`."),
+                ));
+            }
         }
 
         if let Some(each) = &field.builder.each_method {
@@ -1539,9 +1661,13 @@ fn builder_type_tokens(
     builder_ident: &Ident,
     existing_args: &[TokenStream2],
     state_args: Vec<TokenStream2>,
+    built_arg: Option<TokenStream2>,
 ) -> TokenStream2 {
     let mut all_args = existing_args.to_vec();
     all_args.extend(state_args);
+    if let Some(built_arg) = built_arg {
+        all_args.push(built_arg);
+    }
 
     if all_args.is_empty() {
         quote!(#builder_ident)
@@ -1550,17 +1676,13 @@ fn builder_type_tokens(
     }
 }
 
-fn expand_builder_field_setter(
-    builder_ident: &Ident,
-    existing_args: &[TokenStream2],
-    builder_generics: &Generics,
-    fields: &[BuilderField],
-    required_fields: &[&BuilderField],
-    field: &BuilderField,
-) -> TokenStream2 {
-    let (impl_generics, _ty_generics, where_clause) = builder_generics.split_for_impl();
-    let method_ident = &field.ident;
-    let current_state_args = required_fields
+fn optional_setter_ident(field: &BuilderField) -> Option<Ident> {
+    matches!(field.kind, BuilderFieldKind::Optional { .. })
+        .then(|| format_ident!("maybe_{}", field.ident.unraw(), span = field.ident.span()))
+}
+
+fn current_state_args(ctx: &BuilderExpansionCtx<'_, '_>) -> Vec<TokenStream2> {
+    ctx.required_fields
         .iter()
         .map(|required| {
             let state_ident = required
@@ -1569,9 +1691,30 @@ fn expand_builder_field_setter(
                 .expect("required field state ident");
             quote!(#state_ident)
         })
-        .collect::<Vec<_>>();
+        .collect()
+}
 
-    let return_state_args = required_fields
+fn component_type_tokens(component_ident: &Ident, existing_args: &[TokenStream2]) -> TokenStream2 {
+    if existing_args.is_empty() {
+        quote!(#component_ident)
+    } else {
+        quote!(#component_ident < #(#existing_args),* >)
+    }
+}
+
+fn expand_builder_field_setter(
+    ctx: &BuilderExpansionCtx<'_, '_>,
+    field: &BuilderField,
+) -> TokenStream2 {
+    let (impl_generics, _ty_generics, where_clause) = ctx.builder_generics.split_for_impl();
+    let method_ident = &field.ident;
+    let builder_ident = ctx.builder_ident;
+    let built_ident = ctx.built_ident;
+    let built_field_ident = ctx.built_field_ident;
+    let current_state_args = current_state_args(ctx);
+
+    let return_state_args = ctx
+        .required_fields
         .iter()
         .map(|required| {
             if required.ident == field.ident {
@@ -1586,9 +1729,19 @@ fn expand_builder_field_setter(
         })
         .collect::<Vec<_>>();
 
-    let current_ty = builder_type_tokens(builder_ident, existing_args, current_state_args);
-    let return_ty = builder_type_tokens(builder_ident, existing_args, return_state_args);
-    let rebuild_fields = fields.iter().map(|other| {
+    let current_ty = builder_type_tokens(
+        builder_ident,
+        ctx.existing_args,
+        current_state_args,
+        Some(quote!(#built_ident)),
+    );
+    let return_ty = builder_type_tokens(
+        builder_ident,
+        ctx.existing_args,
+        return_state_args,
+        Some(quote!(#built_ident)),
+    );
+    let rebuild_fields = ctx.fields.iter().map(|other| {
         let ident = &other.ident;
         if ident == &field.ident {
             let value_expr = setter_value_expr(field);
@@ -1606,7 +1759,53 @@ fn expand_builder_field_setter(
             pub fn #method_ident(self, #arg_tokens) -> #return_ty {
                 #setter_prelude
                 #builder_ident {
-                    #(#rebuild_fields),*
+                    #(#rebuild_fields,)*
+                    #built_field_ident: ::core::marker::PhantomData
+                }
+            }
+        }
+    }
+}
+
+fn expand_builder_optional_setter(
+    ctx: &BuilderExpansionCtx<'_, '_>,
+    field: &BuilderField,
+) -> TokenStream2 {
+    let Some(method_ident) = optional_setter_ident(field) else {
+        return TokenStream2::new();
+    };
+    let BuilderFieldKind::Optional { inner } = &field.kind else {
+        return TokenStream2::new();
+    };
+
+    let (impl_generics, _ty_generics, where_clause) = ctx.builder_generics.split_for_impl();
+    let builder_ident = ctx.builder_ident;
+    let built_ident = ctx.built_ident;
+    let built_field_ident = ctx.built_field_ident;
+    let current_state_args = current_state_args(ctx);
+
+    let current_ty = builder_type_tokens(
+        builder_ident,
+        ctx.existing_args,
+        current_state_args,
+        Some(quote!(#built_ident)),
+    );
+    let rebuild_fields = ctx.fields.iter().map(|other| {
+        let ident = &other.ident;
+        if ident == &field.ident {
+            quote!(#ident: value)
+        } else {
+            quote!(#ident: self.#ident)
+        }
+    });
+
+    quote! {
+        impl #impl_generics #current_ty #where_clause {
+            #[must_use]
+            pub fn #method_ident(self, value: ::core::option::Option<#inner>) -> Self {
+                #builder_ident {
+                    #(#rebuild_fields,)*
+                    #built_field_ident: ::core::marker::PhantomData
                 }
             }
         }
@@ -1614,32 +1813,27 @@ fn expand_builder_field_setter(
 }
 
 fn expand_builder_each_setter(
-    builder_ident: &Ident,
-    existing_args: &[TokenStream2],
-    builder_generics: &Generics,
-    fields: &[BuilderField],
-    required_fields: &[&BuilderField],
+    ctx: &BuilderExpansionCtx<'_, '_>,
     field: &BuilderField,
 ) -> TokenStream2 {
     let Some(each_ident) = &field.builder.each_method else {
         return TokenStream2::new();
     };
 
-    let (impl_generics, _ty_generics, where_clause) = builder_generics.split_for_impl();
-    let current_state_args = required_fields
-        .iter()
-        .map(|required| {
-            let state_ident = required
-                .state_ident
-                .as_ref()
-                .expect("required field state ident");
-            quote!(#state_ident)
-        })
-        .collect::<Vec<_>>();
+    let (impl_generics, _ty_generics, where_clause) = ctx.builder_generics.split_for_impl();
+    let builder_ident = ctx.builder_ident;
+    let built_ident = ctx.built_ident;
+    let built_field_ident = ctx.built_field_ident;
+    let current_state_args = current_state_args(ctx);
 
-    let current_ty = builder_type_tokens(builder_ident, existing_args, current_state_args);
+    let current_ty = builder_type_tokens(
+        builder_ident,
+        ctx.existing_args,
+        current_state_args,
+        Some(quote!(#built_ident)),
+    );
     let repeated_field_ident = &field.ident;
-    let rebuild_fields = fields.iter().map(|other| {
+    let rebuild_fields = ctx.fields.iter().map(|other| {
         let ident = &other.ident;
         if ident == repeated_field_ident {
             quote!(#ident: #repeated_field_ident)
@@ -1657,7 +1851,8 @@ fn expand_builder_each_setter(
                 let mut #repeated_field_ident = self.#repeated_field_ident;
                 #push_expr
                 #builder_ident {
-                    #(#rebuild_fields),*
+                    #(#rebuild_fields,)*
+                    #built_field_ident: ::core::marker::PhantomData
                 }
             }
         }
@@ -1742,23 +1937,28 @@ fn each_setter_arg_tokens(field: &BuilderField) -> (TokenStream2, TokenStream2) 
 }
 
 fn expand_builder_build_impl(
+    ctx: &BuilderExpansionCtx<'_, '_>,
     component_ident: &Ident,
-    builder_ident: &Ident,
     generics: &Generics,
-    existing_args: &[TokenStream2],
-    fields: &[BuilderField],
-    required_fields: &[&BuilderField],
+    component_ty: &TokenStream2,
 ) -> TokenStream2 {
-    let component_ty = if existing_args.is_empty() {
-        quote!(#component_ident)
-    } else {
-        quote!(#component_ident < #(#existing_args),* >)
-    };
-
+    let builder_ident = ctx.builder_ident;
+    let existing_args = ctx.existing_args;
+    let built_ident = ctx.built_ident;
+    let built_field_ident = ctx.built_field_ident;
+    let fields = ctx.fields;
+    let required_fields = ctx.required_fields;
     let complete_builder_ty = builder_type_tokens(
         builder_ident,
         existing_args,
         required_fields.iter().map(|_| quote!(true)).collect(),
+        Some(quote!(#built_ident)),
+    );
+    let complete_component_builder_ty = builder_type_tokens(
+        builder_ident,
+        existing_args,
+        required_fields.iter().map(|_| quote!(true)).collect(),
+        None,
     );
 
     let build_fields = fields.iter().map(|field| {
@@ -1779,21 +1979,44 @@ fn expand_builder_build_impl(
     });
 
     let destructure_fields = fields.iter().map(|field| &field.ident);
+    let mut builder_generics = generics.clone();
+    builder_generics
+        .params
+        .push(parse_quote!(#built_ident = #component_ty));
+    let (builder_impl_generics, _builder_ty_generics, builder_where_clause) =
+        builder_generics.split_for_impl();
     let (impl_generics, _ty_generics, where_clause) = generics.split_for_impl();
 
     quote! {
-        impl #impl_generics #complete_builder_ty #where_clause {
+        impl #builder_impl_generics #complete_builder_ty #builder_where_clause {
             #[must_use]
-            pub fn build(self) -> #component_ty {
-                let Self { #(#destructure_fields),* } = self;
-                #component_ident {
+            pub fn build(self) -> #built_ident
+            where
+                #component_ty: ::core::convert::Into<#built_ident>,
+            {
+                let Self {
+                    #(#destructure_fields,)*
+                    #built_field_ident: _
+                } = self;
+                let component = #component_ident {
                     #(#build_fields),*
-                }
+                };
+                ::core::convert::Into::into(component)
+            }
+
+            #[must_use]
+            pub fn render(self) -> ::maud::Markup
+            where
+                #component_ty: ::core::convert::Into<#built_ident>,
+                #built_ident: ::maud::Render,
+            {
+                let component = self.build();
+                ::maud::Render::render(&component)
             }
         }
 
-        impl #impl_generics ::core::convert::From<#complete_builder_ty> for #component_ty #where_clause {
-            fn from(builder: #complete_builder_ty) -> Self {
+        impl #impl_generics ::core::convert::From<#complete_component_builder_ty> for #component_ty #where_clause {
+            fn from(builder: #complete_component_builder_ty) -> Self {
                 builder.build()
             }
         }

@@ -76,6 +76,11 @@ let page = html! {
 };
 ```
 
+`css! { ... }` still defines the default `css()` helper that `component!`
+injects automatically. If the same scope needs extra stylesheet helpers, use
+`css! { "card_border", { ... } }` to generate a named function such as
+`card_border()`.
+
 Use `#[derive(ComponentBuilder)]` for new shell and layout components with
 props and named content regions. This is the preferred path when the regions
 can be expressed as typed fields:
@@ -132,7 +137,6 @@ let view = Card::new()
     .body(html! { p { "All systems green" } })
     .action(ActionButton { label: "Retry" })
     .action(ActionButton { label: "Dismiss" })
-    .build()
     .render();
 ```
 
@@ -152,30 +156,34 @@ Rust builder from the component struct you already want to render.
 What it generates:
 - `Type::new()` and `Type::builder()`
 - one setter per field
+- `maybe_field(option)` helpers for `Option<T>` fields using the exact field type
 - `#[builder(each = "...")]` item setters for `Vec<T>` fields
 - `.build()` once all required fields are present
+- `.render()` on the complete builder when the component implements `Render`
 - `From<CompleteBuilder> for Type`
 
 Field rules:
 - plain fields are required
 - `Option<T>` fields are optional
+- `Option<T>` fields also get a `maybe_field(Option<T>)` helper
 - `Vec<T>` fields default to empty and can use `#[builder(each = "...")]`
 - `#[builder(default)]` makes a non-`Option`, non-`Vec` field use `Default`
 - `#[slot]` and `#[slot(default)]` record the component's content-region
   contract for this builder-core layer and for later syntax sugar
 
 Markup ergonomics:
-- fields written as `Markup`, `maud::Markup`, or `::maud::Markup` accept any
-  `impl Render` in generated setters
+- regular setters for fields written as `Markup`, `maud::Markup`, or
+  `::maud::Markup` accept any `impl Render`
 - that applies to single-markup fields, optional markup fields, and repeated
   `Vec<Markup>` item setters
+- `maybe_field(...)` helpers for optional markup fields take `Option<Markup>`
 
 Current limits:
 - named structs only
 - at most one `#[slot(default)]` field
-- `.build()` is still required
+- `.build()` is still required when you need the concrete component value
 - there is no `compose!` macro or block syntax yet
-- the builder itself doesn't implement `Render`
+- the builder offers a consuming `.render()` convenience instead of implementing `Render`
 
 ## Runtime Slots
 

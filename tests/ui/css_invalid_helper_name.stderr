@@ -1,0 +1,5 @@
+error: css! helper name must be a valid Rust identifier string
+ --> tests/ui/css_invalid_helper_name.rs:4:12
+  |
+4 |     css! { "not-valid-name", {
+  |            ^^^^^^^^^^^^^^^^

@@ -1,0 +1,14 @@
+error: duplicate generated builder method `render`.
+ --> tests/ui/component_builder_raw_render.rs:6:5
+  |
+6 |     r#render: Markup,
+  |     ^^^^^^^^
+
+error[E0599]: no function or associated item named `new` found for struct `Card` in the current scope
+  --> tests/ui/component_builder_raw_render.rs:16:19
+   |
+ 5 | struct Card {
+   | ----------- function or associated item `new` not found for this struct
+...
+16 |     let _ = Card::new().r#render(html! { "Body" }).build().render();
+   |                   ^^^ function or associated item not found in `Card`

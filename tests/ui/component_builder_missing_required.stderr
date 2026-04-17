@@ -8,4 +8,4 @@ error[E0599]: no method named `build` found for struct `CardBuilder<true, false>
    |                                             ^^^^^ method not found in `CardBuilder<true, false>`
    |
    = note: the method was found for
-           - `CardBuilder<true, true>`
+           - `CardBuilder<true, true, __Built>`
