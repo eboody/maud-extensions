@@ -151,7 +151,7 @@ fn expand_css_markup(css_input: CssInput) -> TokenStream {
             .into();
     }
 
-    let content_lit = LitStr::new(&css, Span::call_site());
+    let content_lit = LitStr::new(&sanitize_inline_style_source(&css), Span::call_site());
 
     let output = quote! {
         {
@@ -455,6 +455,86 @@ fn tokens_to_source(tokens: TokenStream2) -> String {
 }
 
 fn validate_css(css: &str) -> core::result::Result<(), String> {
+    fn validate_css_structure(css: &str) -> core::result::Result<(), String> {
+        let mut chars = css.chars().peekable();
+        let mut stack = Vec::new();
+        let mut string_delim = None;
+
+        while let Some(ch) = chars.next() {
+            if let Some(delim) = string_delim {
+                match ch {
+                    '\\' => {
+                        chars.next();
+                    }
+                    _ if ch == delim => string_delim = None,
+                    _ => {}
+                }
+                continue;
+            }
+
+            match ch {
+                '/' if chars.peek() == Some(&'*') => {
+                    chars.next();
+                    let mut terminated = false;
+                    while let Some(comment_ch) = chars.next() {
+                        if comment_ch == '*' && chars.peek() == Some(&'/') {
+                            chars.next();
+                            terminated = true;
+                            break;
+                        }
+                    }
+                    if !terminated {
+                        return Err("inline_css! found an unterminated comment".to_string());
+                    }
+                }
+                '"' | '\'' => string_delim = Some(ch),
+                '{' | '[' | '(' => stack.push(ch),
+                '}' => match stack.pop() {
+                    Some('{') => {}
+                    _ => {
+                        return Err(
+                            "inline_css! found an unmatched closing `}` in the stylesheet"
+                                .to_string(),
+                        );
+                    }
+                },
+                ']' => match stack.pop() {
+                    Some('[') => {}
+                    _ => {
+                        return Err(
+                            "inline_css! found an unmatched closing `]` in the stylesheet"
+                                .to_string(),
+                        );
+                    }
+                },
+                ')' => match stack.pop() {
+                    Some('(') => {}
+                    _ => {
+                        return Err(
+                            "inline_css! found an unmatched closing `)` in the stylesheet"
+                                .to_string(),
+                        );
+                    }
+                },
+                _ => {}
+            }
+        }
+
+        if string_delim.is_some() {
+            return Err("inline_css! found an unterminated string literal".to_string());
+        }
+
+        if let Some(unclosed) = stack.pop() {
+            return Err(format!(
+                "inline_css! found an unclosed `{unclosed}` delimiter in the stylesheet"
+            ));
+        }
+
+        Ok(())
+    }
+
+    validate_css_structure(css)?;
+
     let mut input = cssparser::ParserInput::new(css);
     let mut parser = cssparser::Parser::new(&mut input);
     loop {
@@ -468,10 +548,39 @@ fn validate_css(css: &str) -> core::result::Result<(), String> {
     }
 }
 
+fn sanitize_html_raw_text_end_tag(source: &str, tag_name: &str) -> String {
+    let source_bytes = source.as_bytes();
+    let tag_name_bytes = tag_name.as_bytes();
+    let mut output = String::with_capacity(source.len());
+    let mut copied_until = 0;
+    let mut index = 0;
+
+    while index + 2 + tag_name_bytes.len() <= source_bytes.len() {
+        if source_bytes[index] == b'<'
+            && source_bytes[index + 1] == b'/'
+            && source_bytes[index + 2..index + 2 + tag_name_bytes.len()]
+                .eq_ignore_ascii_case(tag_name_bytes)
+        {
+            output.push_str(&source[copied_until..index + 1]);
+            output.push_str("\\/");
+            copied_until = index + 2;
+        }
+
+        index += 1;
+    }
+
+    if copied_until == 0 {
+        source.to_owned()
+    } else {
+        output.push_str(&source[copied_until..]);
+        output
+    }
+}
+
 fn emit_script_bundles(bundles: impl IntoIterator<Item = &'static str>) -> TokenStream {
     let bundles: Vec<LitStr> = bundles
         .into_iter()
-        .map(|bundle| LitStr::new(bundle, Span::call_site()))
+        .map(|bundle| LitStr::new(&sanitize_inline_script_source(bundle), Span::call_site()))
         .collect();
 
     quote! {
@@ -486,15 +595,25 @@ fn emit_script_bundles(bundles: impl IntoIterator<Item = &'static str>) -> Token
     .into()
 }
 
+fn sanitize_inline_script_source(source: &str) -> String {
+    sanitize_html_raw_text_end_tag(source, "script")
+}
+
+fn sanitize_inline_style_source(source: &str) -> String {
+    sanitize_html_raw_text_end_tag(source, "style")
+}
+
 fn expand_js_markup(js_input: JsInput) -> TokenStream {
     let (content_lit, js_string) = match js_input {
         JsInput::Literal(content) => {
             let js_string = content.value();
-            (content, js_string)
+            let sanitized = sanitize_inline_script_source(&js_string);
+            (LitStr::new(&sanitized, Span::call_site()), js_string)
         }
         JsInput::Tokens(tokens) => {
             let js = tokens_to_source(tokens);
-            (LitStr::new(&js, Span::call_site()), js)
+            let sanitized = sanitize_inline_script_source(&js);
+            (LitStr::new(&sanitized, Span::call_site()), js)
         }
     };
     if let Err(message) = validate_js(&js_string) {
@@ -528,12 +647,13 @@ fn expand_js_helper(js_input: JsInput) -> TokenStream {
                  if (__mx_mode === \"once\" && __mx_root) {{\n\
                  if (__mx_root.hasAttribute(\"{js_ran_attr}\")) {{\n\
                  __mx_should_run = false;\n\
-                 }} else {{\n\
-                 __mx_root.setAttribute(\"{js_ran_attr}\", \"\");\n\
                  }}\n\
                  }}\n\
                  if (__mx_should_run) {{\n\
                  {}\n\
+                 if (__mx_mode === \"once\" && __mx_root) {{\n\
+                 __mx_root.setAttribute(\"{js_ran_attr}\", \"\");\n\
+                 }}\n\
                  }}",
                 content.value()
             );
@@ -555,13 +675,15 @@ fn expand_js_helper(js_input: JsInput) -> TokenStream {
                     if (__mx_mode === "once" && __mx_root) {
                         if (__mx_root.hasAttribute(#js_ran_attr)) {
                             __mx_should_run = false;
-                        } else {
-                            __mx_root.setAttribute(#js_ran_attr, "");
                         }
                     }
 
                     if (__mx_should_run) {
                         #tokens
+
+                        if (__mx_mode === "once" && __mx_root) {
+                            __mx_root.setAttribute(#js_ran_attr, "");
+                        }
                     }
                 }
             }
@@ -724,11 +846,38 @@ fn find_component_body_index(tokens: &[TokenTree]) -> Result<usize> {
         ));
     }
 
-    let Some(body_index) = tokens.iter().position(
+    let Some(body_index) = tokens.iter().rposition(
         |token| matches!(token, TokenTree::Group(group) if group.delimiter() == Delimiter::Brace),
     ) else {
         return Err(component_syntax_error(token_span(tokens.last())));
     };
+
+    for earlier_brace_index in 0..body_index {
+        let is_brace_group = matches!(
+            tokens.get(earlier_brace_index),
+            Some(TokenTree::Group(group)) if group.delimiter() == Delimiter::Brace
+        );
+        if !is_brace_group {
+            continue;
+        }
+
+        let is_attribute_value = matches!(
+            earlier_brace_index.checked_sub(1).and_then(|index| tokens.get(index)),
+            Some(TokenTree::Punct(punct)) if punct.as_char() == '='
+        );
+        if is_attribute_value {
+            continue;
+        }
+
+        if let Some((_, token)) = tokens
+            .iter()
+            .enumerate()
+            .skip(earlier_brace_index + 1)
+            .find(|(_, token)| !matches!(token, TokenTree::Punct(punct) if punct.as_char() == ';'))
+        {
+            return Err(component_syntax_error(token.span()));
+        }
+    }
 
     let trailing = tokens
         .iter()
@@ -826,7 +975,7 @@ pub fn component(input: TokenStream) -> TokenStream {
     };
 
     let mut injected_body = root_group.stream();
-    injected_body.extend(quote! { (#component_js_helper_ident()) (#component_css_helper_ident()) });
+    injected_body.extend(quote! { (#component_css_helper_ident()) (#component_js_helper_ident()) });
     let mut updated_group = Group::new(Delimiter::Brace, injected_body);
     updated_group.set_span(root_group.span());
     tokens[body_index] = TokenTree::Group(updated_group);
@@ -869,7 +1018,38 @@ pub fn js_file(input: TokenStream) -> TokenStream {
     let output = quote! {
         maud::html! {
             script {
-                (maud::PreEscaped(include_str!(#path)))
+                ({
+                    fn __mx_sanitize_inline_raw_text_end_tag(source: &str, tag_name: &str) -> String {
+                        let source_bytes = source.as_bytes();
+                        let tag_name_bytes = tag_name.as_bytes();
+                        let mut output = String::with_capacity(source.len());
+                        let mut copied_until = 0;
+                        let mut index = 0;
+
+                        while index + 2 + tag_name_bytes.len() <= source_bytes.len() {
+                            if source_bytes[index] == b'<'
+                                && source_bytes[index + 1] == b'/'
+                                && source_bytes[index + 2..index + 2 + tag_name_bytes.len()]
+                                    .eq_ignore_ascii_case(tag_name_bytes)
+                            {
+                                output.push_str(&source[copied_until..index + 1]);
+                                output.push_str("\\/");
+                                copied_until = index + 2;
+                            }
+
+                            index += 1;
+                        }
+
+                        if copied_until == 0 {
+                            source.to_owned()
+                        } else {
+                            output.push_str(&source[copied_until..]);
+                            output
+                        }
+                    }
+
+                    maud::PreEscaped(__mx_sanitize_inline_raw_text_end_tag(include_str!(#path), "script"))
+                })
             }
         }
     };
@@ -897,7 +1077,38 @@ pub fn css_file(input: TokenStream) -> TokenStream {
     let output = quote! {
         maud::html! {
             style {
-                (maud::PreEscaped(include_str!(#path)))
+                ({
+                    fn __mx_sanitize_inline_raw_text_end_tag(source: &str, tag_name: &str) -> String {
+                        let source_bytes = source.as_bytes();
+                        let tag_name_bytes = tag_name.as_bytes();
+                        let mut output = String::with_capacity(source.len());
+                        let mut copied_until = 0;
+                        let mut index = 0;
+
+                        while index + 2 + tag_name_bytes.len() <= source_bytes.len() {
+                            if source_bytes[index] == b'<'
+                                && source_bytes[index + 1] == b'/'
+                                && source_bytes[index + 2..index + 2 + tag_name_bytes.len()]
+                                    .eq_ignore_ascii_case(tag_name_bytes)
+                            {
+                                output.push_str(&source[copied_until..index + 1]);
+                                output.push_str("\\/");
+                                copied_until = index + 2;
+                            }
+
+                            index += 1;
+                        }
+
+                        if copied_until == 0 {
+                            source.to_owned()
+                        } else {
+                            output.push_str(&source[copied_until..]);
+                            output
+                        }
+                    }
+
+                    maud::PreEscaped(__mx_sanitize_inline_raw_text_end_tag(include_str!(#path), "style"))
+                })
             }
         }
     };
@@ -1042,6 +1253,67 @@ impl Parse for FontFaceList {
     }
 }
 
+fn escape_css_string(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '\\' => escaped.push_str("\\\\"),
+            '"' => escaped.push_str("\\\""),
+            '\n' => escaped.push_str("\\a "),
+            '\r' => escaped.push_str("\\d "),
+            '' => escaped.push_str("\\c "),
+            _ => escaped.push(ch),
+        }
+    }
+    escaped
+}
+
+fn validate_font_face_value(value: &LitStr, field_name: &str) -> syn::Result<()> {
+    let raw = value.value();
+    if raw.trim().is_empty() {
+        return Err(syn::Error::new(
+            value.span(),
+            format!("font_face! {field_name} cannot be empty."),
+        ));
+    }
+
+    if raw.trim() != raw {
+        return Err(syn::Error::new(
+            value.span(),
+            format!("font_face! {field_name} cannot have leading or trailing whitespace."),
+        ));
+    }
+
+    if !raw
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, ' ' | '-' | '.' | '%'))
+    {
+        return Err(syn::Error::new(
+            value.span(),
+            format!(
+                "font_face! {field_name} may only contain ASCII letters, digits, spaces, '-', '.', and '%'."
+            ),
+        ));
+    }
+
+    Ok(())
+}
+
+fn normalize_font_face_css_literals(
+    family: &LitStr,
+    weight: &LitStr,
+    style: &LitStr,
+) -> syn::Result<(LitStr, LitStr, LitStr)> {
+    validate_font_face_value(weight, "font-weight")?;
+    validate_font_face_value(style, "font-style")?;
+
+    Ok((
+        LitStr::new(&escape_css_string(&family.value()), family.span()),
+        LitStr::new(&weight.value(), weight.span()),
+        LitStr::new(&style.value(), style.span()),
+    ))
+}
+
 fn expand_font_face_css(
     path: &Expr,
     family: &LitStr,
@@ -1103,7 +1375,7 @@ fn expand_font_face_css(
                 };
                 let __mx_base64 = __mx_encode_base64(__mx_bytes);
                 format!(
-                    "@font-face {{\n    font-family: '{}';\n    src: url('data:font/{};base64,{}') format('{}');\n    font-weight: {};\n    font-style: {};\n}}",
+                    "@font-face {{\n    font-family: \"{}\";\n    src: url('data:font/{};base64,{}') format('{}');\n    font-weight: {};\n    font-style: {};\n}}",
                     #family,
                     __mx_font_type,
                     __mx_base64,
@@ -1148,7 +1420,11 @@ pub fn font_face(input: TokenStream) -> TokenStream {
     let style = font
         .style
         .unwrap_or_else(|| LitStr::new("normal", Span::call_site()));
-    let css = expand_font_face_css(&font.path, &font.family, &weight, &style);
+    let (family, weight, style) = match normalize_font_face_css_literals(&font.family, &weight, &style) {
+        Ok(values) => values,
+        Err(err) => return err.to_compile_error().into(),
+        };
+    let css = expand_font_face_css(&font.path, &family, &weight, &style);
 
     quote! {{
         maud::PreEscaped(#css)
@@ -1182,7 +1458,8 @@ pub fn font_face(input: TokenStream) -> TokenStream {
 pub fn font_faces(input: TokenStream) -> TokenStream {
     let fonts = parse_macro_input!(input as FontFaceList);
 
-    let font_faces = fonts.fonts.iter().map(|font| {
+    let mut font_face_css = Vec::new();
+    for font in &fonts.fonts {
         let weight = font
             .weight
             .as_ref()
@@ -1193,16 +1470,20 @@ pub fn font_faces(input: TokenStream) -> TokenStream {
             .as_ref()
             .cloned()
             .unwrap_or_else(|| LitStr::new("normal", Span::call_site()));
-        let css = expand_font_face_css(&font.path, &font.family, &weight, &style);
+        let (family, weight, style) = match normalize_font_face_css_literals(&font.family, &weight, &style) {
+            Ok(values) => values,
+            Err(err) => return err.to_compile_error().into(),
+        };
+        let css = expand_font_face_css(&font.path, &family, &weight, &style);
 
-        quote! {
+        font_face_css.push(quote! {
             css.push_str(&#css);
-        }
-    });
+        });
+    }
 
     quote! {{
         let mut css = String::new();
-        #(#font_faces)*
+        #(#font_face_css)*
         maud::PreEscaped(css)
     }}
     .into()
@@ -1274,7 +1555,7 @@ struct BuilderExpansionCtx<'a, 'b> {
 /// #[derive(ComponentBuilder)]
 /// struct Card<'a> {
 ///     title: &'a str,
-///     #[slot(optional)]
+///     #[slot]
 ///     header: Option<Markup>,
 ///     #[slot(default)]
 ///     body: Markup,
@@ -1513,10 +1794,6 @@ fn parse_slot_attr(attrs: &[syn::Attribute]) -> syn::Result<SlotAttr> {
                 return Ok(());
             }
 
-            if meta.path.is_ident("optional") {
-                return Ok(());
-            }
-
             Err(meta.error(
                 "unsupported slot attribute. Supported forms are `#[slot]` and `#[slot(default)]`.",
             ))
@@ -1543,7 +1820,13 @@ fn parse_builder_attr(attrs: &[syn::Attribute]) -> syn::Result<BuilderAttr> {
             if meta.path.is_ident("each") {
                 let value = meta.value()?;
                 let lit: LitStr = value.parse()?;
-                builder.each_method = Some(Ident::new(&lit.value(), lit.span()));
+                let each_method = syn::parse_str::<Ident>(&lit.value()).map_err(|_| {
+                    syn::Error::new(
+                        lit.span(),
+                        "`#[builder(each = \"...\")]` expects a valid Rust identifier.",
+                    )
+                })?;
+                builder.each_method = Some(each_method);
                 return Ok(());
             }
 

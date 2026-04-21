@@ -1,4 +1,4 @@
-error[E0425]: cannot find function `__maud_extensions_component_requires_css_macro_in_scope_can_be_empty` in this scope
+error[E0425]: cannot find function `__maud_extensions_component_requires_js_macro_in_scope_can_be_empty` in this scope
  --> tests/ui/component_missing_helpers.rs:4:13
   |
 4 |       let _ = component! {

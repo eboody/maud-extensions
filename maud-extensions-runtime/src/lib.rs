@@ -20,9 +20,12 @@
 
 use std::{
     cell::RefCell,
+    collections::hash_map::RandomState,
     collections::HashMap,
     fmt::Write as _,
+    hash::{BuildHasher, Hash, Hasher},
     sync::atomic::{AtomicU64, Ordering},
+    sync::OnceLock,
 };
 
 use maud::{Markup, PreEscaped, Render, html};
@@ -44,6 +47,18 @@ thread_local! {
 
 static SLOT_MARKER_COUNTER: AtomicU64 = AtomicU64::new(1);
 
+fn slot_marker_hasher() -> &'static RandomState {
+    static SLOT_MARKER_HASHER: OnceLock<RandomState> = OnceLock::new();
+    SLOT_MARKER_HASHER.get_or_init(RandomState::new)
+}
+
+fn slot_marker_auth(marker_id: &str, slot_name: &str) -> String {
+    let mut hasher = slot_marker_hasher().build_hasher();
+    marker_id.hash(&mut hasher);
+    slot_name.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
 /// A renderable wrapper that assigns content to a named slot.
 ///
 /// Most code should reach this type through [`InSlotExt::in_slot`] instead of constructing it
@@ -64,13 +79,16 @@ impl<T: Render> Slotted<T> {
 impl<T: Render> Render for Slotted<T> {
     fn render(&self) -> Markup {
         let marker_id = next_slot_marker_id();
+        let marker_auth = slot_marker_auth(&marker_id, &self.slot_name);
         let mut start_marker = String::with_capacity(
-            SLOT_START_PREFIX.len() + marker_id.len() + self.slot_name.len() * 2 + 8,
+            SLOT_START_PREFIX.len() + marker_id.len() + self.slot_name.len() * 2 + marker_auth.len() + 16,
         );
         start_marker.push_str(SLOT_START_PREFIX);
         start_marker.push_str(&marker_id);
         start_marker.push(SLOT_MARKER_SEPARATOR);
         start_marker.push_str(&encode_slot_name(&self.slot_name));
+        start_marker.push(SLOT_MARKER_SEPARATOR);
+        start_marker.push_str(&marker_auth);
         start_marker.push_str(SLOT_MARKER_SUFFIX);
 
         let mut end_marker = String::with_capacity(
@@ -225,21 +243,47 @@ fn collect_slots_from_children(children_html: &str) -> SlotPayload {
         };
         let marker_content_end = marker_content_start + marker_end_rel;
         let marker_content = &children_html[marker_content_start..marker_content_end];
-        let Some((marker_id, encoded_name)) = marker_content.split_once(SLOT_MARKER_SEPARATOR)
+        let mut marker_parts = marker_content.split(SLOT_MARKER_SEPARATOR);
+        let Some(marker_id) = marker_parts.next()
         else {
             payload
                 .default_html
                 .push_str(&children_html[slot_marker_start..]);
             return payload;
         };
-        if marker_id.is_empty() {
+        let Some(encoded_name) = marker_parts.next()
+        else {
+            payload
+                .default_html
+                .push_str(&children_html[slot_marker_start..]);
+            return payload;
+        };
+        let Some(marker_auth) = marker_parts.next()
+        else {
+            payload
+                .default_html
+                .push_str(&children_html[slot_marker_start..]);
+            return payload;
+        };
+        if marker_id.is_empty() || marker_parts.next().is_some() {
             payload
                 .default_html
                 .push_str(&children_html[slot_marker_start..]);
             return payload;
         }
 
-        let slot_name = decode_slot_name(encoded_name).unwrap_or_else(|| encoded_name.to_string());
+        let Some(slot_name) = decode_slot_name(encoded_name) else {
+            payload
+                .default_html
+                .push_str(&children_html[slot_marker_start..]);
+            return payload;
+        };
+        if marker_auth != slot_marker_auth(marker_id, &slot_name) {
+            payload
+                .default_html
+                .push_str(&children_html[slot_marker_start..]);
+            return payload;
+        }
         let slot_content_start = marker_content_end + SLOT_MARKER_SUFFIX.len();
 
         let mut end_marker = String::with_capacity(
@@ -280,7 +324,11 @@ fn encode_slot_name(name: &str) -> String {
 }
 
 fn decode_slot_name(encoded_name: &str) -> Option<String> {
-    if encoded_name.is_empty() || encoded_name.len() % 2 != 0 {
+    if encoded_name.is_empty() {
+        return Some(String::new());
+    }
+
+    if encoded_name.len() % 2 != 0 {
         return None;
     }
 

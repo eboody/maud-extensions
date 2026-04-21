@@ -24,8 +24,8 @@ function scopeClassFor(stableId) {
     return scope
 }
 
-window.cssScope ??= new MutationObserver(() => { // Allow 1 observer.
-    document?.body?.querySelectorAll('style:not([ready])').forEach(node => { // Faster than walking MutationObserver results when recieving subtree (DOM swap, ajax, jquery).
+function scopePendingStyles() {
+    document?.querySelectorAll('style[data-mx-css-id]:not([ready])').forEach(node => { // Faster than walking MutationObserver results when recieving subtree (DOM swap, ajax, jquery).
         const stableId = node.getAttribute('data-mx-css-id')
         const scope = scopeClassFor(stableId)
         node.parentNode?.classList?.add(scope)
@@ -49,4 +49,11 @@ window.cssScope ??= new MutationObserver(() => { // Allow 1 observer.
             }
         }
     })
-}).observe(document.documentElement, { childList: true, subtree: true })
+}
+
+window.cssScope ??= new MutationObserver(() => { // Allow 1 observer.
+    scopePendingStyles()
+})
+
+scopePendingStyles()
+window.cssScope.observe(document.documentElement, { childList: true, subtree: true })

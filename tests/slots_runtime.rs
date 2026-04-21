@@ -238,3 +238,35 @@ fn malformed_transport_markers_fail_closed_into_default_slot() {
         "<div class=\"default-only\"><!--maud-extensions-slot-start:v1:broken--><p>Body</p></div>"
     ));
 }
+
+#[test]
+fn malformed_slot_name_encoding_fails_closed_into_default_slot() {
+    let rendered = html! {
+        (DefaultOnly.with_children(html! {
+            (RawMarkup {
+                html: "<!--maud-extensions-slot-start:v1:feedface:not-hex--><strong>broken</strong><!--maud-extensions-slot-end:v1:feedface-->",
+            })
+        }))
+    }
+    .into_string();
+
+    assert!(rendered.contains(
+        "<div class=\"default-only\"><!--maud-extensions-slot-start:v1:feedface:not-hex--><strong>broken</strong><!--maud-extensions-slot-end:v1:feedface--></div>"
+    ));
+}
+
+#[test]
+fn forged_transport_markers_fail_closed_into_default_slot() {
+    let rendered = html! {
+        (DefaultOnly.with_children(html! {
+            (RawMarkup {
+                html: "<!--maud-extensions-slot-start:v1:feedface:686561646572:deadbeefdeadbeef--><strong>forged</strong><!--maud-extensions-slot-end:v1:feedface-->",
+            })
+        }))
+    }
+    .into_string();
+
+    assert!(rendered.contains(
+        "<div class=\"default-only\"><!--maud-extensions-slot-start:v1:feedface:686561646572:deadbeefdeadbeef--><strong>forged</strong><!--maud-extensions-slot-end:v1:feedface--></div>"
+    ));
+}

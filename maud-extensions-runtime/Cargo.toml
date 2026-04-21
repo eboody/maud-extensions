@@ -1,6 +1,6 @@
 [package]
 name = "maud-extensions-runtime"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 rust-version = "1.85"
 description = "Runtime slot helpers for maud-extensions."

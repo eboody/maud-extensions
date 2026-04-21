@@ -4,6 +4,7 @@ fn component_ui() {
     t.pass("tests/ui/component_valid.rs");
     t.pass("tests/ui/component_directive_valid.rs");
     t.pass("tests/ui/component_dynamic_attr_valid.rs");
+    t.pass("tests/ui/component_brace_attr_valid.rs");
     t.pass("tests/ui/css_named_helper_valid.rs");
     t.pass("tests/ui/css_raw_valid.rs");
     t.pass("tests/ui/component_builder_valid.rs");
@@ -16,10 +17,13 @@ fn component_ui() {
     t.pass("tests/ui/component_builder_maybe_optional.rs");
     t.pass("tests/ui/component_builder_raw_identifier.rs");
     t.pass("tests/ui/slot_valid.rs");
+    t.compile_fail("tests/ui/font_face_invalid_metadata.rs");
     t.compile_fail("tests/ui/component_builder_missing_required.rs");
     t.compile_fail("tests/ui/component_builder_tuple_struct.rs");
     t.compile_fail("tests/ui/component_builder_duplicate_default_slot.rs");
+    t.compile_fail("tests/ui/component_builder_slot_optional_unsupported.rs");
     t.compile_fail("tests/ui/component_builder_each_non_vec.rs");
+    t.compile_fail("tests/ui/component_builder_each_invalid_identifier.rs");
     t.compile_fail("tests/ui/component_builder_duplicate_maybe_method.rs");
     t.compile_fail("tests/ui/component_builder_raw_build.rs");
     t.compile_fail("tests/ui/component_builder_raw_render.rs");
@@ -31,6 +35,7 @@ fn component_ui() {
     t.compile_fail("tests/ui/component_missing_css_helper.rs");
     t.compile_fail("tests/ui/css_invalid_helper_name.rs");
     t.compile_fail("tests/ui/css_raw_invalid_argument.rs");
+    t.compile_fail("tests/ui/css_invalid_stylesheet.rs");
     t.compile_fail("tests/ui/component_unknown_directive.rs");
     t.compile_fail("tests/ui/component_conflicting_directives.rs");
     t.compile_fail("tests/ui/component_directive_after_root.rs");

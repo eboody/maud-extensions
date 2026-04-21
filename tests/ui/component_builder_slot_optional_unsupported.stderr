@@ -1,0 +1,5 @@
+error: unsupported slot attribute. Supported forms are `#[slot]` and `#[slot(default)]`.
+ --> tests/ui/component_builder_slot_optional_unsupported.rs:6:12
+  |
+6 |     #[slot(optional)]
+  |            ^^^^^^^^

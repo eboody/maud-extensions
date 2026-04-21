@@ -36,8 +36,26 @@ fn font_face_embeds_a_single_face_without_extra_dependencies() {
     .into_string();
 
     assert!(html.contains("@font-face"));
-    assert!(html.contains("font-family: 'Fixture Sans'"));
+    assert!(html.contains("font-family: \"Fixture Sans\""));
     assert!(html.contains("data:font/woff2;base64,"));
+}
+
+#[test]
+fn font_face_escapes_family_names_for_css_strings() {
+    let html = html! {
+        style {
+            (font_face!(
+                concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/tests/fixtures/demo-font.woff2"
+                ),
+                "O'Reilly \"Sans\""
+            ))
+        }
+    }
+    .into_string();
+
+    assert!(html.contains("font-family: \"O'Reilly \\\"Sans\\\"\""));
 }
 
 #[test]

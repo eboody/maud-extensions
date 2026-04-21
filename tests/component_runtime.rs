@@ -1,7 +1,7 @@
 use maud::{DOCTYPE, Markup, html};
 use maud_extensions::{
-    component, css, inline_css, inline_js, js, signals_inline, surreal_scope_inline,
-    surreal_scope_signals_inline,
+    component, css, css_file, inline_css, inline_js, js, js_file, signals_inline,
+    surreal_scope_inline, surreal_scope_signals_inline,
 };
 
 fn assert_marker_order(haystack: &str, markers: &[&str]) {
@@ -45,6 +45,7 @@ fn component_injects_js_and_css_helpers_inside_root() {
     assert!(html.contains("<script>"));
     assert!(html.contains("data-mx-js-mode"));
     assert!(html.contains("<style data-mx-css-id="));
+    assert_marker_order(&html, &["<p class=\"message\">ok</p>", "<style data-mx-css-id=", "<script>"]);
 }
 
 #[test]
@@ -127,6 +128,58 @@ fn surreal_scope_inline_emits_bundled_scripts() {
     assert!(html.contains("mxCleanupByRoot"));
     assert!(html.contains("onWindow"));
     assert!(html.contains("observeMutations"));
+    assert!(html.contains("<script>me().style.color = 'red'<\\/script>"));
+    assert!(html.contains("function scopePendingStyles()"));
+    assert!(html.contains("scopePendingStyles()"));
+    assert!(html.contains("document?.querySelectorAll('style[data-mx-css-id]:not([ready])')"));
+}
+
+#[test]
+fn inline_js_escapes_embedded_script_end_tags() {
+    let html = html! {
+        (inline_js!(r#"console.log("</script>");"#))
+    }
+    .into_string();
+
+    assert!(html.contains("console.log(\"<\\/script>\");"));
+}
+
+#[test]
+fn inline_js_escapes_embedded_script_end_tags_case_insensitively() {
+    let html = html! {
+        (inline_js!(r#"console.log("</SCRIPT>");"#))
+    }
+    .into_string();
+
+    assert!(html.contains("console.log(\"<\\/SCRIPT>\");"));
+}
+
+#[test]
+fn inline_css_escapes_embedded_style_end_tags_case_insensitively() {
+    let html = html! {
+        (inline_css!(r#"body::before { content: "</STYLE>"; }"#))
+    }
+    .into_string();
+
+    assert!(html.contains("content: \"<\\/STYLE>\";"));
+}
+
+#[test]
+fn file_macros_escape_embedded_raw_text_end_tags_case_insensitively() {
+    let html = html! {
+        (js_file!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/raw_text_end_tag.js"
+        )))
+        (css_file!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/raw_text_end_tag.css"
+        )))
+    }
+    .into_string();
+
+    assert!(html.contains("console.log(\"<\\/SCRIPT>\");"));
+    assert!(html.contains("content: \"<\\/STYLE>\";"));
 }
 
 #[test]
@@ -243,6 +296,13 @@ fn component_supports_js_mode_directives() {
     assert!(
         always_html
             .contains("class=\"always-mode\" data-mx-component=\"\" data-mx-js-mode=\"always\"")
+    );
+    assert_marker_order(
+        &once_html,
+        &[
+            "me().class_add(\"ready\");",
+            "setAttribute",
+        ],
     );
 }
 
