@@ -1,0 +1,5 @@
+error: media! expects a prelude and trailing `{ ... }` body
+ --> tests/ui/css_macro_helpers_invalid.rs:5:15
+  |
+5 |         media!("(min-width: 48rem)")
+  |               ^^^^^^^^^^^^^^^^^^^^^^

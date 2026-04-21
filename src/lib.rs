@@ -9,6 +9,8 @@
 //! - `surreal_scope_inline!()` for the bundled `surreal.js` and `css-scope-inline.js`
 //! - `signals_inline!()` and `surreal_scope_signals_inline!()` for bundled Signals helpers
 //! - `font_face!` and `font_faces!` for embedding font files as data URLs
+//! - Optional Cargo dependency aliasing such as `mx = { package = "maud-extensions", ... }`
+//!   when you prefer `mx::component!()` style call sites
 //!
 //! Support policy:
 //! - MSRV: Rust 1.85
@@ -45,6 +47,8 @@ const COMPONENT_JS_HELPER_FN: &str =
     "__maud_extensions_component_requires_js_macro_in_scope_can_be_empty";
 const COMPONENT_CSS_HELPER_FN: &str =
     "__maud_extensions_component_requires_css_macro_in_scope_can_be_empty";
+const COMPONENT_CSS_SCOPE_HELPER_FN: &str =
+    "__maud_extensions_component_css_scope_class";
 const COMPONENT_JS_MODE_ATTR: &str = "data-mx-js-mode";
 const COMPONENT_JS_RAN_ATTR: &str = "data-mx-js-ran";
 const COMPONENT_SYNTAX_ERROR: &str = "component! expects optional directives first (`@js-once` or `@js-always`) followed by exactly one top-level element with a body block, e.g. component! { @js-once article { ... } }";
@@ -210,6 +214,8 @@ fn parse_helper_ident(helper_name: LitStr, macro_name: &str) -> Result<Ident> {
 
 fn expand_css_helper(input: CssHelperInput) -> TokenStream {
     let component_css_helper_ident = Ident::new(COMPONENT_CSS_HELPER_FN, Span::call_site());
+    let component_css_scope_helper_ident =
+        Ident::new(COMPONENT_CSS_SCOPE_HELPER_FN, Span::call_site());
     let use_default_component_helper = input.helper_name.is_none();
     let css_fn_ident = match input.helper_name {
         Some(name) => match parse_helper_ident(name, "css") {
@@ -233,9 +239,36 @@ fn expand_css_helper(input: CssHelperInput) -> TokenStream {
         TokenStream::from(quote! {
             #output
 
+            fn __mx_component_css_callsite_id(prefix: &str, file: &str, line: u32, col: u32) -> String {
+                let mut h: u64 = 0xcbf29ce484222325;
+                for b in file.as_bytes() {
+                    h ^= *b as u64;
+                    h = h.wrapping_mul(0x100000001b3);
+                }
+                for b in line.to_le_bytes() {
+                    h ^= b as u64;
+                    h = h.wrapping_mul(0x100000001b3);
+                }
+                for b in col.to_le_bytes() {
+                    h ^= b as u64;
+                    h = h.wrapping_mul(0x100000001b3);
+                }
+
+                format!("{prefix}{h:016x}")
+            }
+
+            fn __mx_component_css_scope_class() -> String {
+                __mx_component_css_callsite_id("mx-css-", file!(), line!(), column!())
+            }
+
             #[doc(hidden)]
             fn #component_css_helper_ident() -> maud::Markup {
                 #css_fn_ident()
+            }
+
+            #[doc(hidden)]
+            fn #component_css_scope_helper_ident() -> String {
+                __mx_component_css_scope_class()
             }
         })
     } else {
@@ -250,6 +283,14 @@ fn expand_css_helper(input: CssHelperInput) -> TokenStream {
 ///
 /// Use `raw!(r#"..."#)` inside token input as an escape hatch for CSS fragments that are not
 /// valid Rust token syntax.
+///
+/// Additional CSS-oriented escape hatches are available for syntax that is awkward as Rust tokens:
+/// - `media!(query, { ... })`
+/// - `container!(query, { ... })`
+/// - `supports!(condition, { ... })`
+/// - `layer!(name, { ... })`
+/// - `keyframes!(name, { ... })`
+/// - unit helpers like `rem!(2)`, `px!(12)`, `pct!(100)`, `em!(1.5)`, `ms!(150)`, and `s!(2)`
 ///
 /// `css! { ... }` generates the default `fn css() -> maud::Markup` helper used by `component!`.
 /// `css! { "card_css", { ... } }` generates `fn card_css() -> maud::Markup` instead, which lets
@@ -268,11 +309,17 @@ fn expand_css_helper(input: CssHelperInput) -> TokenStream {
 ///     css! {
 ///         me { color: red; }
 ///     }
+///     css! { "responsive_css", {
+///         media!("(min-width: 48rem)", {
+///             me { padding: rem!(2); }
+///         })
+///     } }
 ///     css! { "tokens_css", raw!(r#":root { --font-display: 'Newsreader', Georgia, serif; }"#) }
 ///     css! { "card_border", {
 ///         .card { border: 1px solid #ddd; }
 ///     } }
 ///     let _ = card_border();
+///     let _ = responsive_css();
 ///     let _ = tokens_css();
 ///     markup
 /// }
@@ -311,6 +358,127 @@ fn css_tokens_to_source(tokens: TokenStream2) -> Result<String> {
     css_token_trees_to_source(tokens.into_iter().collect())
 }
 
+fn parse_css_macro_group<'a>(
+    tokens: &'a [TokenTree],
+    index: &mut usize,
+    macro_name: &str,
+) -> Result<Option<&'a Group>> {
+    let Some(TokenTree::Ident(ident)) = tokens.get(*index) else {
+        return Ok(None);
+    };
+
+    if ident != macro_name {
+        return Ok(None);
+    }
+
+    let Some(TokenTree::Punct(punct)) = tokens.get(*index + 1) else {
+        return Ok(None);
+    };
+
+    if punct.as_char() != '!' {
+        return Ok(None);
+    }
+
+    let Some(TokenTree::Group(group)) = tokens.get(*index + 2) else {
+        return Err(syn::Error::new(
+            punct.span(),
+            format!("{macro_name}! expects macro arguments in parentheses"),
+        ));
+    };
+
+    if group.delimiter() != Delimiter::Parenthesis {
+        return Err(syn::Error::new(
+            group.span(),
+            format!("{macro_name}! expects macro arguments in parentheses"),
+        ));
+    }
+
+    *index += 2;
+    Ok(Some(group))
+}
+
+fn parse_css_at_rule_macro(group: &Group, macro_name: &str, at_rule: &str) -> Result<String> {
+    let tokens: Vec<TokenTree> = group.stream().into_iter().collect();
+    let Some(body_index) = tokens
+        .iter()
+        .rposition(|token| matches!(token, TokenTree::Group(group) if group.delimiter() == Delimiter::Brace))
+    else {
+        return Err(syn::Error::new(
+            group.span(),
+            format!("{macro_name}! expects a prelude and trailing `{{ ... }}` body"),
+        ));
+    };
+
+    if body_index < 2
+        || !matches!(tokens.get(body_index - 1), Some(TokenTree::Punct(punct)) if punct.as_char() == ',')
+    {
+        return Err(syn::Error::new(
+            group.span(),
+            format!("{macro_name}! expects `{macro_name}!(prelude, {{ ... }})`"),
+        ));
+    }
+
+    if tokens.iter().skip(body_index + 1).any(|token| {
+        !matches!(token, TokenTree::Punct(punct) if punct.as_char() == ',')
+    }) {
+        return Err(syn::Error::new(
+            group.span(),
+            format!("{macro_name}! only accepts a prelude and one body block"),
+        ));
+    }
+
+    let prelude_tokens = &tokens[..body_index - 1];
+    let prelude = if let [TokenTree::Literal(literal)] = prelude_tokens {
+        match syn::parse_str::<LitStr>(&literal.to_string()) {
+            Ok(lit) => lit.value(),
+            Err(_) => literal.to_string(),
+        }
+    } else {
+        css_token_trees_to_source(prelude_tokens.to_vec())?
+    };
+    if prelude.trim().is_empty() {
+        return Err(syn::Error::new(
+            group.span(),
+            format!("{macro_name}! requires a non-empty prelude"),
+        ));
+    }
+
+    let TokenTree::Group(body_group) = &tokens[body_index] else {
+        unreachable!();
+    };
+    let body = css_tokens_to_source(body_group.stream())?;
+    Ok(format!("@{at_rule} {prelude} {{{body}}}"))
+}
+
+fn parse_css_unit_macro(group: &Group, macro_name: &str, suffix: &str) -> Result<String> {
+    let tokens: Vec<TokenTree> = group.stream().into_iter().collect();
+    if tokens.is_empty() {
+        return Err(syn::Error::new(
+            group.span(),
+            format!("{macro_name}! requires a value"),
+        ));
+    }
+
+    if tokens
+        .iter()
+        .any(|token| matches!(token, TokenTree::Punct(punct) if punct.as_char() == ','))
+    {
+        return Err(syn::Error::new(
+            group.span(),
+            format!("{macro_name}! expects exactly one value argument"),
+        ));
+    }
+
+    let value = css_token_trees_to_source(tokens)?;
+    if value.trim().is_empty() {
+        return Err(syn::Error::new(
+            group.span(),
+            format!("{macro_name}! requires a value"),
+        ));
+    }
+    Ok(format!("{value}{suffix}"))
+}
+
 fn css_token_trees_to_source(tokens: Vec<TokenTree>) -> Result<String> {
     let mut out = String::new();
     let mut prev_word = false;
@@ -323,6 +491,60 @@ fn css_token_trees_to_source(tokens: Vec<TokenTree>) -> Result<String> {
             }
             out.push_str(&raw_css);
             prev_word = false;
+            continue;
+        }
+
+        if let Some(media_css) = try_parse_media_css(&tokens, &mut index)? {
+            if prev_word {
+                out.push(' ');
+            }
+            out.push_str(&media_css);
+            prev_word = false;
+            continue;
+        }
+
+        if let Some(container_css) = try_parse_container_css(&tokens, &mut index)? {
+            if prev_word {
+                out.push(' ');
+            }
+            out.push_str(&container_css);
+            prev_word = false;
+            continue;
+        }
+
+        if let Some(supports_css) = try_parse_supports_css(&tokens, &mut index)? {
+            if prev_word {
+                out.push(' ');
+            }
+            out.push_str(&supports_css);
+            prev_word = false;
+            continue;
+        }
+
+        if let Some(layer_css) = try_parse_layer_css(&tokens, &mut index)? {
+            if prev_word {
+                out.push(' ');
+            }
+            out.push_str(&layer_css);
+            prev_word = false;
+            continue;
+        }
+
+        if let Some(keyframes_css) = try_parse_keyframes_css(&tokens, &mut index)? {
+            if prev_word {
+                out.push(' ');
+            }
+            out.push_str(&keyframes_css);
+            prev_word = false;
+            continue;
+        }
+
+        if let Some(unit_value) = try_parse_unit_css(&tokens, &mut index)? {
+            if prev_word {
+                out.push(' ');
+            }
+            out.push_str(&unit_value);
+            prev_word = true;
             continue;
         }
 
@@ -375,32 +597,68 @@ fn css_token_trees_to_source(tokens: Vec<TokenTree>) -> Result<String> {
 }
 
 fn try_parse_raw_css(tokens: &[TokenTree], index: &mut usize) -> Result<Option<String>> {
-    let Some(TokenTree::Ident(ident)) = tokens.get(*index) else {
+    let Some(group) = parse_css_macro_group(tokens, index, "raw")? else {
         return Ok(None);
-    };
-
-    if ident != "raw" {
-        return Ok(None);
-    }
-
-    let Some(TokenTree::Punct(punct)) = tokens.get(*index + 1) else {
-        return Ok(None);
-    };
-
-    if punct.as_char() != '!' {
-        return Ok(None);
-    }
-
-    let Some(TokenTree::Group(group)) = tokens.get(*index + 2) else {
-        return Err(syn::Error::new(
-            punct.span(),
-            "raw! expects exactly one string literal argument",
-        ));
     };
 
     let raw_css = parse_raw_css_fragment(group)?;
-    *index += 2;
     Ok(Some(raw_css))
+}
+
+fn try_parse_media_css(tokens: &[TokenTree], index: &mut usize) -> Result<Option<String>> {
+    let Some(group) = parse_css_macro_group(tokens, index, "media")? else {
+        return Ok(None);
+    };
+    Ok(Some(parse_css_at_rule_macro(group, "media", "media")?))
+}
+
+fn try_parse_container_css(tokens: &[TokenTree], index: &mut usize) -> Result<Option<String>> {
+    let Some(group) = parse_css_macro_group(tokens, index, "container")? else {
+        return Ok(None);
+    };
+    Ok(Some(parse_css_at_rule_macro(group, "container", "container")?))
+}
+
+fn try_parse_supports_css(tokens: &[TokenTree], index: &mut usize) -> Result<Option<String>> {
+    let Some(group) = parse_css_macro_group(tokens, index, "supports")? else {
+        return Ok(None);
+    };
+    Ok(Some(parse_css_at_rule_macro(group, "supports", "supports")?))
+}
+
+fn try_parse_layer_css(tokens: &[TokenTree], index: &mut usize) -> Result<Option<String>> {
+    let Some(group) = parse_css_macro_group(tokens, index, "layer")? else {
+        return Ok(None);
+    };
+    Ok(Some(parse_css_at_rule_macro(group, "layer", "layer")?))
+}
+
+fn try_parse_keyframes_css(tokens: &[TokenTree], index: &mut usize) -> Result<Option<String>> {
+    let Some(group) = parse_css_macro_group(tokens, index, "keyframes")? else {
+        return Ok(None);
+    };
+    Ok(Some(parse_css_at_rule_macro(group, "keyframes", "keyframes")?))
+}
+
+fn try_parse_unit_css(tokens: &[TokenTree], index: &mut usize) -> Result<Option<String>> {
+    for (macro_name, suffix) in [
+        ("rem", "rem"),
+        ("em", "em"),
+        ("px", "px"),
+        ("pct", "%"),
+        ("vw", "vw"),
+        ("vh", "vh"),
+        ("ms", "ms"),
+        ("s", "s"),
+    ] {
+        let original_index = *index;
+        if let Some(group) = parse_css_macro_group(tokens, index, macro_name)? {
+            return Ok(Some(parse_css_unit_macro(group, macro_name, suffix)?));
+        }
+        *index = original_index;
+    }
+
+    Ok(None)
 }
 
 fn tokens_to_source(tokens: TokenStream2) -> String {
@@ -920,6 +1178,8 @@ fn find_component_body_index(tokens: &[TokenTree]) -> Result<usize> {
 pub fn component(input: TokenStream) -> TokenStream {
     let component_js_helper_ident = Ident::new(COMPONENT_JS_HELPER_FN, Span::call_site());
     let component_css_helper_ident = Ident::new(COMPONENT_CSS_HELPER_FN, Span::call_site());
+    let component_css_scope_helper_ident =
+        Ident::new(COMPONENT_CSS_SCOPE_HELPER_FN, Span::call_site());
     let mut tokens: Vec<TokenTree> = TokenStream2::from(input).into_iter().collect();
 
     while matches!(
@@ -985,6 +1245,7 @@ pub fn component(input: TokenStream) -> TokenStream {
         body_index..body_index,
         quote! {
             data-mx-component=""
+            data-mx-css-scope=(#component_css_scope_helper_ident())
             data-mx-js-mode=(#js_mode_lit)
         },
     );

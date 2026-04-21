@@ -5,6 +5,7 @@ fn component_ui() {
     t.pass("tests/ui/component_directive_valid.rs");
     t.pass("tests/ui/component_dynamic_attr_valid.rs");
     t.pass("tests/ui/component_brace_attr_valid.rs");
+    t.pass("tests/ui/css_macro_helpers_valid.rs");
     t.pass("tests/ui/css_named_helper_valid.rs");
     t.pass("tests/ui/css_raw_valid.rs");
     t.pass("tests/ui/component_builder_valid.rs");
@@ -35,6 +36,7 @@ fn component_ui() {
     t.compile_fail("tests/ui/component_missing_css_helper.rs");
     t.compile_fail("tests/ui/css_invalid_helper_name.rs");
     t.compile_fail("tests/ui/css_raw_invalid_argument.rs");
+    t.compile_fail("tests/ui/css_macro_helpers_invalid.rs");
     t.compile_fail("tests/ui/css_invalid_stylesheet.rs");
     t.compile_fail("tests/ui/component_unknown_directive.rs");
     t.compile_fail("tests/ui/component_conflicting_directives.rs");

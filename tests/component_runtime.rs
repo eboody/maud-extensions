@@ -15,6 +15,18 @@ fn assert_marker_order(haystack: &str, markers: &[&str]) {
     }
 }
 
+fn attribute_value<'a>(html: &'a str, attr: &str) -> &'a str {
+    let marker = format!("{attr}=\"");
+    let start = html
+        .find(&marker)
+        .unwrap_or_else(|| panic!("missing attribute: {attr}"))
+        + marker.len();
+    let end = html[start..]
+        .find('"')
+        .unwrap_or_else(|| panic!("unterminated attribute: {attr}"));
+    &html[start..start + end]
+}
+
 #[test]
 fn component_injects_js_and_css_helpers_inside_root() {
     fn status_card(message: &str) -> Markup {
@@ -39,13 +51,17 @@ fn component_injects_js_and_css_helpers_inside_root() {
 
     let html = status_card("ok").into_string();
     assert!(html.contains(
-        "<article class=\"status-card\" data-mx-component=\"\" data-mx-js-mode=\"always\">"
+        "<article class=\"status-card\" data-mx-component=\"\" data-mx-css-scope=\"mx-css-"
     ));
     assert!(html.contains("<p class=\"message\">ok</p>"));
     assert!(html.contains("<script>"));
     assert!(html.contains("data-mx-js-mode"));
     assert!(html.contains("<style data-mx-css-id="));
     assert_marker_order(&html, &["<p class=\"message\">ok</p>", "<style data-mx-css-id=", "<script>"]);
+    assert_eq!(
+        attribute_value(&html, "data-mx-css-scope"),
+        attribute_value(&html, "data-mx-css-id")
+    );
 }
 
 #[test]
@@ -67,7 +83,7 @@ fn component_allows_trailing_semicolon() {
     }
 
     let html = trailing().into_string();
-    assert!(html.contains("<div data-mx-component=\"\" data-mx-js-mode=\"always\">trailing"));
+    assert!(html.contains("<div data-mx-component=\"\" data-mx-css-scope=\"mx-css-"));
     assert!(html.contains("<script>"));
     assert!(html.contains("<style data-mx-css-id="));
 }
@@ -116,6 +132,42 @@ fn css_macros_allow_raw_css_escape_hatches() {
 }
 
 #[test]
+fn css_macros_support_at_rules_and_unit_helpers() {
+    let html = html! {
+        (inline_css! {
+            media!("(min-width: 48rem)", {
+                me { padding: rem!(2); }
+            })
+            container!("card (min-width: 30rem)", {
+                me { gap: px!(12); }
+            })
+            supports!("(display: grid)", {
+                me { width: pct!(100); }
+            })
+            layer!(components, {
+                me { margin: em!(1.5); }
+            })
+            keyframes!(fade_in, {
+                from { opacity: 0; }
+                to { opacity: 1; }
+            })
+        })
+    }
+    .into_string();
+
+    assert!(html.contains("@media (min-width: 48rem)"));
+    assert!(html.contains("padding:2rem"));
+    assert!(html.contains("@container card (min-width: 30rem)"));
+    assert!(html.contains("gap:12px"));
+    assert!(html.contains("@supports (display: grid)"));
+    assert!(html.contains("width:100%"));
+    assert!(html.contains("@layer components"));
+    assert!(html.contains("margin:1.5em"));
+    assert!(html.contains("@keyframes fade_in"));
+    assert!(html.contains("opacity:1"));
+}
+
+#[test]
 fn surreal_scope_inline_emits_bundled_scripts() {
     let html = html! {
         (surreal_scope_inline!())
@@ -132,6 +184,7 @@ fn surreal_scope_inline_emits_bundled_scripts() {
     assert!(html.contains("function scopePendingStyles()"));
     assert!(html.contains("scopePendingStyles()"));
     assert!(html.contains("document?.querySelectorAll('style[data-mx-css-id]:not([ready])')"));
+    assert!(html.contains("[data-mx-css-scope=\"") );
 }
 
 #[test]
@@ -244,7 +297,7 @@ fn component_allows_empty_js_and_css_helpers() {
 
     let html = empty_helpers().into_string();
     assert!(html.contains(
-        "<div class=\"empty-helpers\" data-mx-component=\"\" data-mx-js-mode=\"always\">"
+        "<div class=\"empty-helpers\" data-mx-component=\"\" data-mx-css-scope=\"mx-css-"
     ));
     assert!(html.contains("<script>"));
     assert!(html.contains("data-mx-js-ran"));
@@ -291,11 +344,11 @@ fn component_supports_js_mode_directives() {
     let always_html = always_mode().into_string();
 
     assert!(
-        once_html.contains("class=\"once-mode\" data-mx-component=\"\" data-mx-js-mode=\"once\"")
+        once_html.contains("class=\"once-mode\" data-mx-component=\"\" data-mx-css-scope=\"mx-css-")
     );
     assert!(
         always_html
-            .contains("class=\"always-mode\" data-mx-component=\"\" data-mx-js-mode=\"always\"")
+            .contains("class=\"always-mode\" data-mx-component=\"\" data-mx-css-scope=\"mx-css-")
     );
     assert_marker_order(
         &once_html,

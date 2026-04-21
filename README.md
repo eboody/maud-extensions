@@ -27,6 +27,22 @@ cargo add maud-extensions
 cargo add maud-extensions-runtime # only needed for the lower-level runtime slot transport
 ```
 
+If you want the crate to read as `mx::...` at call sites without renaming the published crate,
+add it with a dependency alias:
+
+```bash
+cargo add maud-extensions --rename mx
+```
+
+or in `Cargo.toml`:
+
+```toml
+[dependencies]
+mx = { package = "maud-extensions", version = "0.5.4" }
+```
+
+Then you can write `mx::component!`, `mx::css!`, `mx::ComponentBuilder`, and so on.
+
 Support policy:
 - MSRV: Rust 1.85
 - supported Maud version: 0.27
@@ -74,6 +90,15 @@ css! {
     raw!(r#":root { --font-display: 'Newsreader', Georgia, serif; }"#)
 }
 
+css! {
+    media!("(min-width: 48rem)", {
+        me { padding: rem!(2); }
+    })
+    supports!("(display: grid)", {
+        me { gap: px!(12); }
+    })
+}
+
 let page = html! {
     head { (surreal_scope_inline!()) }
     body { (StatusCard { message: "All systems operational" }) }
@@ -85,7 +110,10 @@ injects automatically. If the same scope needs extra stylesheet helpers, use
 `css! { "card_border", { ... } }` to generate a named function such as
 `card_border()`. Use `raw!(r#"..."#)` inside `css!` or `inline_css!` as an
 escape hatch for CSS fragments that are not valid Rust token syntax, such as
-single-quoted selectors or font-family values.
+single-quoted selectors or font-family values. For CSS syntax that is awkward in
+Rust tokens but still structured, `css!` also supports helper macros like
+`media!(...)`, `container!(...)`, `supports!(...)`, `layer!(...)`,
+`keyframes!(...)`, and unit helpers such as `rem!(2)` / `px!(12)` / `pct!(100)`.
 
 For larger token or theme stylesheets, prefer wrapping the non-Rust CSS slice in
 one `raw!` fragment instead of trying to escape it piecemeal:

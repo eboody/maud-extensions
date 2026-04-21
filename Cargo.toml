@@ -1,6 +1,6 @@
 [package]
 name = "maud-extensions"
-version = "0.5.3"
+version = "0.5.4"
 edition = "2024"
 rust-version = "1.85"
 description = "Component, inline CSS/JS, and font helper macros for Maud views."
