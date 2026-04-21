@@ -70,6 +70,10 @@ css! {
     }
 }
 
+css! {
+    raw!(r#":root { --font-display: 'Newsreader', Georgia, serif; }"#)
+}
+
 let page = html! {
     head { (surreal_scope_inline!()) }
     body { (StatusCard { message: "All systems operational" }) }
@@ -79,7 +83,38 @@ let page = html! {
 `css! { ... }` still defines the default `css()` helper that `component!`
 injects automatically. If the same scope needs extra stylesheet helpers, use
 `css! { "card_border", { ... } }` to generate a named function such as
-`card_border()`.
+`card_border()`. Use `raw!(r#"..."#)` inside `css!` or `inline_css!` as an
+escape hatch for CSS fragments that are not valid Rust token syntax, such as
+single-quoted selectors or font-family values.
+
+For larger token or theme stylesheets, prefer wrapping the non-Rust CSS slice in
+one `raw!` fragment instead of trying to escape it piecemeal:
+
+```rust
+use maud_extensions::css;
+
+fn design_tokens() -> maud::Markup {
+    css! { "design_tokens", raw!(r#"
+        :root {
+            --font-display: 'Newsreader', Georgia, serif;
+            --font-sans: 'Space Grotesk', system-ui, sans-serif;
+        }
+
+        :root,
+        [data-theme='light'] {
+            color-scheme: light;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            [data-theme='system'] {
+                color-scheme: dark;
+            }
+        }
+    "#) }
+
+    design_tokens()
+}
+```
 
 Use `#[derive(ComponentBuilder)]` for new shell and layout components with
 props and named content regions. This is the preferred path when the regions
@@ -292,6 +327,8 @@ Manual composition rule:
 - `js!` and `css!` must both be in scope for `component!`, even if one is empty
 - `inline_js!` validates JavaScript with SWC before generating markup
 - `inline_css!` runs a lightweight CSS syntax check before generating markup
+- token-style `css!` / `inline_css!` only see Rust-tokenizable input; use
+  `raw!(r#"..."#)` or `css_file!(...)` for arbitrary CSS fragments
 - slot runtime helpers fail closed outside `.with_children(...)`
 - malformed slot transport markers fail closed into default-slot content
 - runtime slots are a lower-level transport layer; for new shell/layout

@@ -6,6 +6,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Added `raw!(r#"..."#)` as an escape hatch inside token-style `css!` and
+  `inline_css!` input for CSS fragments that are not valid Rust token syntax.
+
+### Changed
+
+- `inline_css!` now validates string-literal CSS input with the same lightweight
+  syntax check used for token-style CSS.
+
 ## [0.5.1] - 2026-04-17
 
 ### Added

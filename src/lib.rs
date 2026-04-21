@@ -137,18 +137,21 @@ impl Parse for CssHelperInput {
 }
 
 fn expand_css_markup(css_input: CssInput) -> TokenStream {
-    let content_lit = match css_input {
-        CssInput::Literal(content) => content,
-        CssInput::Tokens(tokens) => {
-            let css = tokens_to_source(tokens);
-            if let Err(message) = validate_css(&css) {
-                return syn::Error::new(Span::call_site(), message)
-                    .to_compile_error()
-                    .into();
-            }
-            LitStr::new(&css, Span::call_site())
-        }
+    let css = match css_input {
+        CssInput::Literal(content) => content.value(),
+        CssInput::Tokens(tokens) => match css_tokens_to_source(tokens) {
+            Ok(css) => css,
+            Err(err) => return err.to_compile_error().into(),
+        },
     };
+
+    if let Err(message) = validate_css(&css) {
+        return syn::Error::new(Span::call_site(), message)
+            .to_compile_error()
+            .into();
+    }
+
+    let content_lit = LitStr::new(&css, Span::call_site());
 
     let output = quote! {
         {
@@ -245,6 +248,9 @@ fn expand_css_helper(input: CssHelperInput) -> TokenStream {
 /// The macro accepts either a string literal or CSS-like tokens. Token input is flattened into a
 /// stylesheet string and checked for basic CSS syntax before it is emitted.
 ///
+/// Use `raw!(r#"..."#)` inside token input as an escape hatch for CSS fragments that are not
+/// valid Rust token syntax.
+///
 /// `css! { ... }` generates the default `fn css() -> maud::Markup` helper used by `component!`.
 /// `css! { "card_css", { ... } }` generates `fn card_css() -> maud::Markup` instead, which lets
 /// you define additional stylesheet helpers in the same scope.
@@ -262,10 +268,12 @@ fn expand_css_helper(input: CssHelperInput) -> TokenStream {
 ///     css! {
 ///         me { color: red; }
 ///     }
+///     css! { "tokens_css", raw!(r#":root { --font-display: 'Newsreader', Georgia, serif; }"#) }
 ///     css! { "card_border", {
 ///         .card { border: 1px solid #ddd; }
 ///     } }
 ///     let _ = card_border();
+///     let _ = tokens_css();
 ///     markup
 /// }
 /// ```
@@ -273,6 +281,126 @@ fn expand_css_helper(input: CssHelperInput) -> TokenStream {
 pub fn css(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as CssHelperInput);
     expand_css_helper(input)
+}
+
+struct RawCssInput {
+    css: LitStr,
+}
+
+impl Parse for RawCssInput {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let css: LitStr = input.parse()?;
+        if !input.is_empty() {
+            return Err(input.error("raw! expects exactly one string literal argument"));
+        }
+        Ok(Self { css })
+    }
+}
+
+fn parse_raw_css_fragment(group: &Group) -> Result<String> {
+    let input = syn::parse2::<RawCssInput>(group.stream()).map_err(|_| {
+        syn::Error::new(
+            group.span(),
+            "raw! expects exactly one string literal argument",
+        )
+    })?;
+    Ok(input.css.value())
+}
+
+fn css_tokens_to_source(tokens: TokenStream2) -> Result<String> {
+    css_token_trees_to_source(tokens.into_iter().collect())
+}
+
+fn css_token_trees_to_source(tokens: Vec<TokenTree>) -> Result<String> {
+    let mut out = String::new();
+    let mut prev_word = false;
+    let mut index = 0usize;
+
+    while index < tokens.len() {
+        if let Some(raw_css) = try_parse_raw_css(&tokens, &mut index)? {
+            if prev_word {
+                out.push(' ');
+            }
+            out.push_str(&raw_css);
+            prev_word = false;
+            continue;
+        }
+
+        match &tokens[index] {
+            TokenTree::Group(group) => {
+                let (open, close) = match group.delimiter() {
+                    Delimiter::Parenthesis => ('(', ')'),
+                    Delimiter::Bracket => ('[', ']'),
+                    Delimiter::Brace => ('{', '}'),
+                    Delimiter::None => (' ', ' '),
+                };
+                let needs_space =
+                    prev_word && matches!(group.delimiter(), Delimiter::Brace | Delimiter::None);
+                if needs_space {
+                    out.push(' ');
+                }
+                if open != ' ' {
+                    out.push(open);
+                }
+                out.push_str(&css_tokens_to_source(group.stream())?);
+                if close != ' ' {
+                    out.push(close);
+                }
+                prev_word = false;
+            }
+            TokenTree::Ident(ident) => {
+                if prev_word {
+                    out.push(' ');
+                }
+                out.push_str(&ident.to_string());
+                prev_word = true;
+            }
+            TokenTree::Literal(literal) => {
+                if prev_word {
+                    out.push(' ');
+                }
+                out.push_str(&literal.to_string());
+                prev_word = true;
+            }
+            TokenTree::Punct(punct) => {
+                out.push(punct.as_char());
+                prev_word = false;
+            }
+        }
+
+        index += 1;
+    }
+
+    Ok(out)
+}
+
+fn try_parse_raw_css(tokens: &[TokenTree], index: &mut usize) -> Result<Option<String>> {
+    let Some(TokenTree::Ident(ident)) = tokens.get(*index) else {
+        return Ok(None);
+    };
+
+    if ident != "raw" {
+        return Ok(None);
+    }
+
+    let Some(TokenTree::Punct(punct)) = tokens.get(*index + 1) else {
+        return Ok(None);
+    };
+
+    if punct.as_char() != '!' {
+        return Ok(None);
+    }
+
+    let Some(TokenTree::Group(group)) = tokens.get(*index + 2) else {
+        return Err(syn::Error::new(
+            punct.span(),
+            "raw! expects exactly one string literal argument",
+        ));
+    };
+
+    let raw_css = parse_raw_css_fragment(group)?;
+    *index += 2;
+    Ok(Some(raw_css))
 }
 
 fn tokens_to_source(tokens: TokenStream2) -> String {
@@ -505,6 +633,8 @@ pub fn inline_js(input: TokenStream) -> TokenStream {
 /// Emits a `<style>` tag directly from a CSS string literal or token block.
 ///
 /// The CSS is checked for basic syntax errors before the markup is generated.
+/// Use `raw!(r#"..."#)` inside token input as an escape hatch for CSS fragments that are not
+/// valid Rust token syntax.
 ///
 /// ```rust
 /// use maud_extensions::inline_css;

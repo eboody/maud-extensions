@@ -1,0 +1,5 @@
+error: raw! expects exactly one string literal argument
+ --> tests/ui/css_raw_invalid_argument.rs:5:13
+  |
+5 |         raw!(123)
+  |             ^^^^^

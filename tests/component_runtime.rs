@@ -89,6 +89,32 @@ fn inline_macros_emit_direct_tags() {
 }
 
 #[test]
+fn css_macros_allow_raw_css_escape_hatches() {
+    fn token_view() -> Markup {
+        css! {
+            me { color: #111; }
+            raw!(r#"[data-theme='light'] { --font-display: 'Newsreader', Georgia, serif; }"#)
+        }
+
+        css()
+    }
+
+    let helper_html = token_view().into_string();
+    assert!(helper_html.contains("[data-theme='light']"));
+    assert!(helper_html.contains("'Newsreader', Georgia, serif"));
+
+    let inline_html = html! {
+        (inline_css! {
+            raw!(r#":root { --font-display: 'Newsreader', Georgia, serif; }"#)
+        })
+    }
+    .into_string();
+
+    assert!(inline_html.contains(":root"));
+    assert!(inline_html.contains("'Newsreader', Georgia, serif"));
+}
+
+#[test]
 fn surreal_scope_inline_emits_bundled_scripts() {
     let html = html! {
         (surreal_scope_inline!())
