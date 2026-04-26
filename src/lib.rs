@@ -8,9 +8,12 @@
 //! - write plain `html!`
 //! - emit local CSS with `css!`
 //! - emit local JS with `js!`
+//! - optionally opt into experimental component authoring with `Component`
 //!
 //! `maud-extensions` should feel like tiny Maud superpowers, not a framework.
 
+#[cfg(feature = "components")]
+mod component;
 mod css;
 mod js;
 mod raw_text;
@@ -81,4 +84,16 @@ pub fn css(input: TokenStream) -> TokenStream {
 pub fn js(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as js::MacroInput);
     js::expand(input)
+}
+
+/// Experimental opt-in derive for builder-centric Maud component authoring.
+///
+/// This derive is gated behind the `components` crate feature and is only a
+/// semantic entrypoint for now; the full component expansion is still under
+/// construction.
+#[cfg(feature = "components")]
+#[proc_macro_derive(Component, attributes(mx))]
+pub fn component(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as component::Input);
+    component::expand(input)
 }
