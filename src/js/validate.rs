@@ -12,6 +12,6 @@ pub(crate) fn script(js: &str) -> core::result::Result<(), String> {
     );
     match parser.parse_script() {
         Ok(_) => Ok(()),
-        Err(err) => Err(format!("inline_js! could not parse JavaScript: {err:?}")),
+        Err(err) => Err(format!("js! could not parse JavaScript: {err:?}")),
     }
 }

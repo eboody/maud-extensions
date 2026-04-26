@@ -1,4 +1,4 @@
-error: inline_css! found an unclosed `{` delimiter in the stylesheet
+error: css! found an unclosed `{` delimiter in the stylesheet
  --> tests/ui/css_invalid_stylesheet.rs:4:5
   |
 4 |     css!("body { color: red;");
@@ -6,7 +6,7 @@ error: inline_css! found an unclosed `{` delimiter in the stylesheet
   |
   = note: this error originates in the macro `css` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error: inline_css! found an unclosed `{` delimiter in the stylesheet
+error: css! found an unclosed `{` delimiter in the stylesheet
  --> tests/ui/css_invalid_stylesheet.rs:6:13
   |
 6 |     let _ = css!(r#".card { display: block; "#);

@@ -8,7 +8,7 @@ pub(crate) fn stylesheet(css: &str) -> core::result::Result<(), String> {
             Ok(_) => {}
             Err(err) => match err.kind {
                 cssparser::BasicParseErrorKind::EndOfInput => return Ok(()),
-                _ => return Err("inline_css! could not parse CSS tokens".to_string()),
+                _ => return Err("css! could not parse CSS tokens".to_string()),
             },
         }
     }
@@ -43,7 +43,7 @@ fn validate_structure(css: &str) -> core::result::Result<(), String> {
                     }
                 }
                 if !terminated {
-                    return Err("inline_css! found an unterminated comment".to_string());
+                    return Err("css! found an unterminated comment".to_string());
                 }
             }
             '"' | '\'' => string_delim = Some(ch),
@@ -51,25 +51,19 @@ fn validate_structure(css: &str) -> core::result::Result<(), String> {
             '}' => match stack.pop() {
                 Some('{') => {}
                 _ => {
-                    return Err(
-                        "inline_css! found an unmatched closing `}` in the stylesheet".to_string(),
-                    );
+                    return Err("css! found an unmatched closing `}` in the stylesheet".to_string());
                 }
             },
             ']' => match stack.pop() {
                 Some('[') => {}
                 _ => {
-                    return Err(
-                        "inline_css! found an unmatched closing `]` in the stylesheet".to_string(),
-                    );
+                    return Err("css! found an unmatched closing `]` in the stylesheet".to_string());
                 }
             },
             ')' => match stack.pop() {
                 Some('(') => {}
                 _ => {
-                    return Err(
-                        "inline_css! found an unmatched closing `)` in the stylesheet".to_string(),
-                    );
+                    return Err("css! found an unmatched closing `)` in the stylesheet".to_string());
                 }
             },
             _ => {}
@@ -77,12 +71,12 @@ fn validate_structure(css: &str) -> core::result::Result<(), String> {
     }
 
     if string_delim.is_some() {
-        return Err("inline_css! found an unterminated string literal".to_string());
+        return Err("css! found an unterminated string literal".to_string());
     }
 
     if let Some(unclosed) = stack.pop() {
         return Err(format!(
-            "inline_css! found an unclosed `{unclosed}` delimiter in the stylesheet"
+            "css! found an unclosed `{unclosed}` delimiter in the stylesheet"
         ));
     }
     Ok(())
