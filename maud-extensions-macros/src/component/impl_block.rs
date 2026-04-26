@@ -1,6 +1,6 @@
 // Impl-block component macro rewriting render/css/js item macros into hidden hooks.
 use proc_macro::TokenStream;
-use proc_macro2::TokenStream as TokenStream2;
+use proc_macro2::{Delimiter, Group, TokenStream as TokenStream2, TokenTree};
 use quote::quote;
 use syn::{Error, ImplItem, ImplItemMacro, ItemImpl, spanned::Spanned};
 
@@ -97,14 +97,8 @@ fn ensure_unique(existing: &Option<TokenStream2>, span: proc_macro2::Span, name:
 
 fn parse_render_tokens(item_macro: &ImplItemMacro) -> syn::Result<TokenStream2> {
     let body = item_macro.mac.tokens.clone();
-    Ok(quote! {
-        ::maud::html! {
-            #body {
-                (Self::__mx_css())
-                (Self::__mx_js())
-            }
-        }
-    })
+    let rooted = inject_component_facets(body, item_macro.mac.path.span())?;
+    Ok(quote! { ::maud::html! { #rooted } })
 }
 
 fn parse_css_tokens(item_macro: &ImplItemMacro) -> syn::Result<TokenStream2> {
@@ -117,10 +111,77 @@ fn parse_css_tokens(item_macro: &ImplItemMacro) -> syn::Result<TokenStream2> {
 }
 
 fn parse_js_tokens(item_macro: &ImplItemMacro) -> syn::Result<TokenStream2> {
-    let body = item_macro.mac.tokens.clone();
-    Ok(quote! {
-        ::maud_extensions::js! {
-            #body
+    let tokens = item_macro.mac.tokens.clone();
+    if tokens.is_empty() {
+        return Ok(quote! { ::maud_extensions::js! {} });
+    }
+
+    let trees = tokens.clone().into_iter().collect::<Vec<_>>();
+    if trees.len() >= 2
+        && matches!(&trees[0], TokenTree::Ident(_))
+        && matches!(&trees[1], TokenTree::Punct(punct) if punct.as_char() == ',')
+    {
+        let TokenTree::Ident(mode) = &trees[0] else {
+            unreachable!();
+        };
+
+        if mode != "once" {
+            return Err(Error::new(
+                mode.span(),
+                "`js!` in #[mx::component] impls only supports `js! { ... }` or `js!(once, { ... })`",
+            ));
         }
-    })
+
+        return Ok(quote! { ::maud_extensions::js!(#tokens) });
+    }
+
+    Ok(quote! { ::maud_extensions::js! { #tokens } })
+}
+
+fn inject_component_facets(
+    tokens: TokenStream2,
+    span: proc_macro2::Span,
+) -> syn::Result<TokenStream2> {
+    let trees = tokens.into_iter().collect::<Vec<_>>();
+    let root_index = trees
+        .iter()
+        .enumerate()
+        .filter(|(_, tree)| matches!(tree, TokenTree::Group(group) if group.delimiter() == Delimiter::Brace))
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+
+    if root_index.len() != 1 {
+        return Err(Error::new(
+            span,
+            "`render!` must contain exactly one top-level element with one trailing `{ ... }` body block",
+        ));
+    }
+
+    let body_index = root_index[0];
+    if body_index == 0 || body_index != trees.len() - 1 {
+        return Err(Error::new(
+            span,
+            "`render!` must look like one root element followed by one `{ ... }` body block",
+        ));
+    }
+
+    let mut output = TokenStream2::new();
+    for tree in &trees[..body_index] {
+        output.extend([tree.clone()]);
+    }
+
+    let TokenTree::Group(body_group) = &trees[body_index] else {
+        unreachable!();
+    };
+    let original_body = body_group.stream();
+    let expanded_body = quote! {
+        (Self::__mx_css())
+        (Self::__mx_js())
+        #original_body
+    };
+    let mut new_group = Group::new(Delimiter::Brace, expanded_body);
+    new_group.set_span(body_group.span());
+    output.extend([TokenTree::Group(new_group)]);
+
+    Ok(output)
 }

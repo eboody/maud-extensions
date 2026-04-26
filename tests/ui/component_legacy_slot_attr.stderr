@@ -1,0 +1,5 @@
+error: slot fields are now declared with `Slot<T>` types; remove `#[mx(slot)]` and change the field type instead
+ --> tests/ui/component_legacy_slot_attr.rs:6:10
+  |
+6 |     #[mx(slot)]
+  |          ^^^^

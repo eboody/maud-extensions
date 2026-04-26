@@ -25,4 +25,9 @@ fn component_ui() {
     t.compile_fail("tests/ui/component_each_non_vec.rs");
     t.compile_fail("tests/ui/component_repeated_slot_wrong_type.rs");
     t.compile_fail("tests/ui/component_multiple_slots_need_default.rs");
+    t.compile_fail("tests/ui/component_legacy_slot_attr.rs");
+    t.compile_fail("tests/ui/component_impl_multiple_roots.rs");
+    t.compile_fail("tests/ui/component_impl_duplicate_css.rs");
+    t.compile_fail("tests/ui/component_impl_duplicate_js.rs");
+    t.compile_fail("tests/ui/component_impl_invalid_js_mode.rs");
 }

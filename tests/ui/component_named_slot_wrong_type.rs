@@ -1,9 +1,8 @@
-use maud_extensions::Component;
+use maud_extensions::{Component, Slot};
 
 #[derive(Component)]
 struct BadNamedSlot {
-    #[mx(slot)]
-    header: Option<String>,
+    header: Slot<Option<String>>,
 }
 
 fn main() {}

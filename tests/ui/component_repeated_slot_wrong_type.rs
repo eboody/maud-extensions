@@ -1,9 +1,9 @@
-use maud_extensions::Component;
+use maud_extensions::{Component, Slot};
 
 #[derive(Component)]
 struct BadRepeatedSlot {
-    #[mx(slot, each = action)]
-    actions: Vec<String>,
+    #[mx(each = action)]
+    actions: Slot<Vec<String>>,
 }
 
 fn main() {}

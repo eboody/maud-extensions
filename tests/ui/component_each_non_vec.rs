@@ -1,9 +1,10 @@
-use maud_extensions::Component;
+use maud::Markup;
+use maud_extensions::{Component, Slot};
 
 #[derive(Component)]
 struct BadEach {
-    #[mx(slot, each = action)]
-    action: maud::Markup,
+    #[mx(each = action)]
+    action: Slot<Markup>,
 }
 
 fn main() {}

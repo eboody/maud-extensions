@@ -7,7 +7,6 @@ use syn::{
 
 #[derive(Default)]
 pub(crate) struct FieldAttrs {
-    pub(crate) slot: Option<Span>,
     pub(crate) default: Option<DefaultValue>,
     pub(crate) each: Option<Each>,
 }
@@ -23,7 +22,6 @@ pub(crate) struct Each {
 }
 
 enum AttrItem {
-    Slot(Span),
     Default { span: Span, expr: Option<Expr> },
     Each { span: Span, setter: Ident },
 }
@@ -34,7 +32,10 @@ impl Parse for AttrItem {
         let span = ident.span();
 
         match ident.to_string().as_str() {
-            "slot" => Ok(Self::Slot(span)),
+            "slot" => Err(Error::new(
+                span,
+                "slot fields are now declared with `Slot<T>` types; remove `#[mx(slot)]` and change the field type instead",
+            )),
             "default" => {
                 if input.peek(Token![=]) {
                     input.parse::<Token![=]>()?;
@@ -55,7 +56,7 @@ impl Parse for AttrItem {
             }
             _ => Err(Error::new(
                 ident.span(),
-                "unknown mx field attribute; supported forms are `slot`, `default`, `default = ...`, and `each = name`",
+                "unknown mx field attribute; supported forms are `default`, `default = ...`, and `each = name`",
             )),
         }
     }
@@ -86,12 +87,6 @@ pub(crate) fn parse_field_attrs(attrs: &[Attribute]) -> Result<FieldAttrs> {
 
 fn apply_item(attrs: &mut FieldAttrs, item: AttrItem) -> Result<()> {
     match item {
-        AttrItem::Slot(span) => {
-            if attrs.slot.is_some() {
-                return Err(Error::new(span, "duplicate `slot` attribute"));
-            }
-            attrs.slot = Some(span);
-        }
         AttrItem::Default { span, expr } => {
             if attrs.default.is_some() {
                 return Err(Error::new(span, "duplicate `default` attribute"));

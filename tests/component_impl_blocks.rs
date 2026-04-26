@@ -6,7 +6,7 @@ use maud_extensions::{self as mx, Component, ComponentRender, Slot};
 #[derive(Component, Debug)]
 struct Card {
     title: String,
-    #[mx(slot, default)]
+    #[mx(default)]
     body: Slot<Markup>,
 }
 
@@ -18,9 +18,9 @@ impl Card {
         }
     }
 
-    js! {
+    js!(once, {
         me().class_add("ready");
-    }
+    });
 
     render! {
         article.card {

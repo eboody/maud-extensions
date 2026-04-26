@@ -790,3 +790,41 @@ Even with these advanced powers available, the guiding philosophy should remain:
 
 So Bon expands implementation power much more than it changes the product's
 identity.
+
+### Ergonomics polish I’m thinking about
+1. **Naming polish**
+   - should `render!`, `css!`, `js!` inside `#[mx::component]` impls maybe support optional named variants later?
+   - do we want canonical `js!(once, { ... })` only, or sugar?
+
+2. **Builder method polish**
+   - check whether generated slot setter names and repeated item setter names are exactly what we want everywhere
+   - maybe better docs on generated methods like `.child()` / `.action()`
+
+3. **Error message polish**
+   - some current errors are correct but could be more “teachy”
+   - especially around root/render block rules
+
+4. **Render protocol polish**
+   - maybe clarify whether users should ever manually implement `Render` by calling `ComponentRender::__mx_render(self)`
+   - maybe we can give them a nicer documented pattern
+
+### Unification / simplification I’m thinking about
+Right now component authoring is:
+
+- `#[derive(Component)]` on the struct
+- `#[mx::component]` on the impl
+
+That’s workable, but longer-term we may want to ask:
+
+#### Option A: keep both
+This is probably fine if docs are strong.
+
+#### Option B: unify under one concept later
+Maybe eventually:
+- `#[mx::component]` on the struct
+- `#[mx::component]` on the impl
+
+or some other more cohesive surface.
+
+But I don’t think we should rush that now.
+

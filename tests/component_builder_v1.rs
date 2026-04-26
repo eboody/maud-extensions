@@ -15,10 +15,10 @@ struct Badge {
 struct Card {
     title: String,
     header: Slot<Markup>,
-    #[mx(slot, default)]
+    #[mx(default)]
     body: Slot<Markup>,
     footer: Slot<Markup>,
-    #[mx(slot, each = action)]
+    #[mx(each = action)]
     actions: Slot<Vec<Markup>>,
 }
 

@@ -11,6 +11,12 @@ Proc macros for Maud with a deliberately small default story.
 cargo add maud-extensions
 ```
 
+If you want the experimental component system too:
+
+```bash
+cargo add maud-extensions --features components
+```
+
 If you want the crate to read as `mx::...` at call sites without renaming the
 published crate:
 
@@ -64,6 +70,105 @@ This is the intended center of gravity:
 - no hidden CSS/JS injection
 - no stringly helper names
 - plain Maud remains the main language
+
+## Experimental Components
+
+The current component story is opt-in behind the `components` feature.
+
+Preferred shape:
+
+```rust
+use maud::{Markup, Render};
+use maud_extensions::{self as mx, Component, Slot};
+
+#[derive(Component)]
+struct Card {
+    title: String,
+    header: Slot<Markup>,
+    #[mx(default)]
+    body: Slot<Markup>,
+    footer: Slot<Markup>,
+    #[mx(each = action)]
+    actions: Slot<Vec<Markup>>,
+}
+
+#[mx::component]
+impl Card {
+    css! {
+        me {
+            padding: 1rem;
+            border: 1px solid #ddd;
+        }
+
+        me .actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+    }
+
+    js!(once, {
+        me().class_add("ready");
+    });
+
+    render! {
+        article.card {
+            header class="header" { (self.header) }
+            h2 { (self.title) }
+            div.body { (self.body) }
+            footer class="footer" { (self.footer) }
+            div.actions { (self.actions) }
+        }
+    }
+}
+
+impl Render for Card {
+    fn render(&self) -> Markup {
+        mx::ComponentRender::__mx_render(self)
+    }
+}
+
+fn view() -> Markup {
+    Card::new()
+        .title("Profile")
+        .header(maud::html! { span { "Welcome" } })
+        .child(maud::html! { p { "Body" } })
+        .footer(maud::html! { button { "Save" } })
+        .action(maud::html! { button { "Edit" } })
+        .render()
+}
+```
+
+What this gives you:
+
+- Bon-backed typed builders
+- `Slot<Markup>` and `Slot<Vec<Markup>>` as the slot declaration path
+- `#[mx(default)]` for the single default slot
+- `#[mx::component] impl` blocks with colocated:
+  - `render! { ... }`
+  - `css! { ... }`
+  - `js!(once, { ... })`
+- builder `.render()` automatically includes impl-local CSS and JS in the
+  rendered root
+
+Current component constraints:
+
+- use `Slot<T>` instead of `#[mx(slot)]`
+- if there are multiple slot fields, mark exactly one `#[mx(default)]`
+- repeated slots use `Slot<Vec<T>>` plus `#[mx(each = item_name)]`
+- `#[mx::component]` impls currently allow:
+  - exactly one `render!`
+  - at most one `css!`
+  - at most one `js!`
+
+Why the split between struct and impl?
+
+- `#[derive(Component)]` owns field parsing and Bon-backed builder generation
+- `#[mx::component]` owns impl-local rendering and colocated CSS/JS blocks
+- builder `.render()` uses the hidden `ComponentRender` hook produced by the
+  impl macro
+
+This keeps the builder and the impl-local render/assets story explicit without
+requiring manual `(Self::css())` or `(Self::js())` emission in the render body.
 
 ## Named Helpers
 

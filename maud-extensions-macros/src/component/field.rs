@@ -43,7 +43,7 @@ impl ComponentField {
         let ty = field.ty.clone();
         let slot_inner = slot_inner(&field.ty);
         let slot_content_ty = slot_inner.unwrap_or(&field.ty);
-        let is_slot_field = attrs.slot.is_some() || slot_inner.is_some() || is_maud_extensions_slots(&field.ty);
+        let is_slot_field = slot_inner.is_some() || is_maud_extensions_slots(&field.ty);
         let optional = option_inner(slot_content_ty).is_some();
         let repeated = vec_inner(slot_content_ty).is_some() || is_maud_extensions_slots(&field.ty);
 
