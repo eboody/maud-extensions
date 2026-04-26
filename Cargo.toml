@@ -13,24 +13,18 @@ categories = ["web-programming", "template-engine"]
 
 [lib]
 name = "maud_extensions"
-proc-macro = true
 
 [package.metadata.docs.rs]
 all-features = true
 
 [features]
 default = []
-components = []
+components = ["maud-extensions-macros/components"]
 
 [dependencies]
-cssparser = "0.33.0"
-proc-macro2 = "1.0.101"
-quote = "1.0.41"
-swc_common = "18.0.1"
-swc_ecma_parser = "33.0.1"
-syn = { version = "2.0.106", features = ["full"] }
+bon = { version = "3.9", features = ["experimental-overwritable"] }
+maud-extensions-macros = { path = "maud-extensions-macros", version = "0.5.4" }
 
 [dev-dependencies]
-bon = { version = "3.9", features = ["experimental-overwritable"] }
 maud = "0.27"
 trybuild = "1.0.112"

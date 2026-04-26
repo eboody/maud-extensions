@@ -123,7 +123,7 @@ fn derive_bon_v1(component: &Component) -> Result<TokenStream2, TokenStream2> {
         .collect::<Vec<_>>();
 
     Ok(quote! {
-        #[::bon::bon]
+        #[::maud_extensions::bon::bon]
         impl #impl_generics #name #ty_generics #where_clause {
             #[builder(
                 builder_type(name = #builder_name, vis = "pub"),
