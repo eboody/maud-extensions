@@ -36,7 +36,9 @@ fn derive_bon_v1(component: &Component) -> Result<TokenStream2, TokenStream2> {
                         ));
                     }
 
-                    if !(slot.optional && !slot.repeated && slot.each.is_none()) {
+                    if !(slot.optional && !slot.repeated && slot.each.is_none()
+                        || !slot.optional && slot.repeated && slot.each.is_some())
+                    {
                         return Err(diagnostic::unsupported_in_v1(
                             component,
                             &field.name.to_string(),
@@ -51,6 +53,14 @@ fn derive_bon_v1(component: &Component) -> Result<TokenStream2, TokenStream2> {
                             component,
                             &field.name.to_string(),
                             "default slots with non-`maud::Markup` storage types",
+                        ));
+                    }
+                } else if slot.repeated {
+                    if !is_vec_of_maud_markup(&field.ty) {
+                        return Err(diagnostic::unsupported_in_v1(
+                            component,
+                            &field.name.to_string(),
+                            "repeated slots with non-`Vec<maud::Markup>` storage types",
                         ));
                     }
                 } else if !is_optional_maud_markup(&field.ty) {
@@ -90,8 +100,16 @@ fn derive_bon_v1(component: &Component) -> Result<TokenStream2, TokenStream2> {
         .transpose()?;
     let named_slot_methods = component
         .named_slots()
-        .map(|field| {
-            named_optional_slot_methods(field, &component.generics, &builder_name, &state_mod_name)
+        .map(|field| match field.slot() {
+            Some(SlotField { repeated: true, .. }) => {
+                repeated_slot_methods(field, &component.generics, &builder_name, &state_mod_name)
+            }
+            _ => named_optional_slot_methods(
+                field,
+                &component.generics,
+                &builder_name,
+                &state_mod_name,
+            ),
         })
         .collect::<Result<Vec<_>, _>>()?;
     let inits = component
@@ -165,6 +183,18 @@ fn prop_param(field: &ComponentField) -> Result<TokenStream2, TokenStream2> {
                 #builder_name: #ty
             })
         }
+        FieldKind::Slot(SlotField {
+            default: false,
+            repeated: true,
+            ..
+        }) => {
+            let getter_internal = format_ident!("__mx_get_{}_internal", builder_name);
+
+            Ok(quote! {
+                #[builder(default, overwritable, getter(name = #getter_internal, vis = ""))]
+                #builder_name: #ty
+            })
+        }
         FieldKind::Slot(SlotField { default: false, .. }) => {
             let some_internal = field.bon_optional_some_setter_ident();
 
@@ -207,6 +237,31 @@ fn default_slot_methods(
             NewChild: ::maud::Render,
         {
             self.#slot_name(child)
+        }
+    })
+}
+
+fn repeated_slot_methods(
+    field: &ComponentField,
+    _generics: &Generics,
+    _builder_name: &syn::Ident,
+    _state_mod_name: &syn::Ident,
+) -> Result<TokenStream2, TokenStream2> {
+    let item_setter = field
+        .slot()
+        .and_then(|slot| slot.each.as_ref())
+        .expect("repeated slot methods require `each = ...`");
+    let collection_setter = &field.name;
+    let getter_internal = format_ident!("__mx_get_{}_internal", collection_setter);
+
+    Ok(quote! {
+        pub fn #item_setter<NewChild>(self, child: NewChild) -> Self
+        where
+            NewChild: ::maud::Render,
+        {
+            let mut items = self.#getter_internal().cloned().unwrap_or_default();
+            items.push(::maud::Render::render(&child));
+            self.#collection_setter(items)
         }
     })
 }
@@ -266,6 +321,27 @@ fn is_optional_maud_markup(ty: &syn::Type) -> bool {
         return false;
     }
     let syn::PathArguments::AngleBracketed(arguments) = &option_segment.arguments else {
+        return false;
+    };
+    let Some(syn::GenericArgument::Type(inner)) = arguments.args.first() else {
+        return false;
+    };
+
+    is_maud_markup(inner)
+}
+
+fn is_vec_of_maud_markup(ty: &syn::Type) -> bool {
+    let syn::Type::Path(type_path) = ty else {
+        return false;
+    };
+
+    let Some(vec_segment) = type_path.path.segments.last() else {
+        return false;
+    };
+    if vec_segment.ident != "Vec" {
+        return false;
+    }
+    let syn::PathArguments::AngleBracketed(arguments) = &vec_segment.arguments else {
         return false;
     };
     let Some(syn::GenericArgument::Type(inner)) = arguments.args.first() else {

@@ -94,7 +94,8 @@ pub fn js(input: TokenStream) -> TokenStream {
 /// prop builders only; slot-specific ergonomics are still under construction.
 ///
 /// Current note: generated code references `::bon`, so downstream crates using
-/// this derive must also depend on `bon` directly for now.
+/// this derive must also depend on `bon` directly for now. Repeated slot
+/// support currently relies on Bon's experimental `overwritable` feature.
 #[cfg(feature = "components")]
 #[proc_macro_derive(Component, attributes(mx))]
 pub fn component(input: TokenStream) -> TokenStream {

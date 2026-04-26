@@ -18,6 +18,8 @@ struct Card {
     header: Option<maud::Markup>,
     #[mx(slot, default)]
     body: maud::Markup,
+    #[mx(slot, each = action)]
+    actions: Vec<maud::Markup>,
     #[mx(slot)]
     footer: Option<maud::Markup>,
 }
@@ -45,6 +47,13 @@ impl Render for Card {
                 }
                 h2 { (self.title) }
                 div class="body" { (self.body) }
+                @if !self.actions.is_empty() {
+                    div class="actions" {
+                        @for action in &self.actions {
+                            (action)
+                        }
+                    }
+                }
                 @if let Some(footer) = &self.footer {
                     footer class="footer" { (footer) }
                 }
@@ -131,4 +140,34 @@ fn component_v1_named_optional_slots_support_maybe_setters() {
 
     assert!(markup.contains("<header class=\"header\"><em>Heads up</em></header>"));
     assert!(!markup.contains("class=\"footer\""));
+}
+
+#[test]
+fn component_v1_repeated_slots_support_each_style_renderable_setters() {
+    let markup = Card::new()
+        .title("Profile")
+        .child(html! { p { "Body" } })
+        .action(html! { button { "Save" } })
+        .action(html! { button { "Cancel" } })
+        .render()
+        .into_string();
+
+    assert!(
+        markup
+            .contains("<div class=\"actions\"><button>Save</button><button>Cancel</button></div>")
+    );
+}
+
+#[test]
+fn component_v1_repeated_slots_keep_bulk_vec_setter() {
+    let card = Card::new()
+        .title("Profile")
+        .body(html! { p { "Body" } })
+        .actions(vec![html! { button { "One" } }, html! { button { "Two" } }])
+        .build();
+
+    let markup = card.render().into_string();
+    assert!(
+        markup.contains("<div class=\"actions\"><button>One</button><button>Two</button></div>")
+    );
 }

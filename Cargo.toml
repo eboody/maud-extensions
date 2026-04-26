@@ -31,6 +31,6 @@ swc_ecma_parser = "33.0.1"
 syn = { version = "2.0.106", features = ["full"] }
 
 [dev-dependencies]
-bon = "3.9"
+bon = { version = "3.9", features = ["experimental-overwritable"] }
 maud = "0.27"
 trybuild = "1.0.112"
