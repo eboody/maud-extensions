@@ -4,7 +4,7 @@ use syn::Error;
 
 use crate::js::validate::ScriptError;
 
-use super::error;
+use crate::internal_diagnostics::error_with_help;
 
 pub(crate) fn invalid_script(span: Span, err: &ScriptError) -> Error {
     match err {
@@ -12,7 +12,7 @@ pub(crate) fn invalid_script(span: Span, err: &ScriptError) -> Error {
             line,
             column,
             message,
-        } => error(
+        } => error_with_help(
             span,
             format!(
                 "js! could not parse JavaScript (rendered JS line {line}, column {column}: {message})"

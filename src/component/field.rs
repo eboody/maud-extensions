@@ -5,6 +5,8 @@ use crate::component::attrs::{DefaultValue, FieldAttrs, parse_field_attrs};
 
 pub(crate) struct ComponentField {
     pub(crate) name: Ident,
+    pub(crate) builder_name: Ident,
+    pub(crate) ty: Type,
     pub(crate) kind: FieldKind,
 }
 
@@ -13,7 +15,7 @@ pub(crate) enum FieldKind {
     Slot(SlotField),
 }
 
-#[allow(dead_code)]
+#[allow(dead_code)] // Semantic facets staged for later expansion slices.
 pub(crate) struct PropField {
     pub(crate) optional: bool,
     pub(crate) repeated: bool,
@@ -21,7 +23,7 @@ pub(crate) struct PropField {
     pub(crate) each: Option<Ident>,
 }
 
-#[allow(dead_code)]
+#[allow(dead_code)] // Semantic facets staged for later expansion slices.
 pub(crate) struct SlotField {
     pub(crate) optional: bool,
     pub(crate) repeated: bool,
@@ -36,6 +38,8 @@ impl ComponentField {
             .ident
             .clone()
             .expect("named fields only should reach ComponentField::from_syn");
+        let builder_name = name.clone();
+        let ty = field.ty.clone();
         let optional = option_inner(&field.ty).is_some();
         let repeated = vec_inner(&field.ty).is_some();
 
@@ -48,7 +52,12 @@ impl ComponentField {
 
         let kind = classify_kind(attrs, optional, repeated)?;
 
-        Ok(Self { name, kind })
+        Ok(Self {
+            name,
+            builder_name,
+            ty,
+            kind,
+        })
     }
 }
 
@@ -74,11 +83,29 @@ fn classify_kind(attrs: FieldAttrs, optional: bool, repeated: bool) -> Result<Fi
         ));
     }
 
+    if attrs.default.is_some() && repeated {
+        return Ok(FieldKind::Prop(PropField {
+            optional,
+            repeated,
+            default: attrs.default,
+            each: attrs.each.map(|each| each.setter),
+        }));
+    }
+
+    if attrs.default.is_some() || attrs.each.is_some() || optional || repeated {
+        return Ok(FieldKind::Prop(PropField {
+            optional,
+            repeated,
+            default: attrs.default,
+            each: attrs.each.map(|each| each.setter),
+        }));
+    }
+
     Ok(FieldKind::Prop(PropField {
-        optional,
-        repeated,
-        default: attrs.default,
-        each: attrs.each.map(|each| each.setter),
+        optional: false,
+        repeated: false,
+        default: None,
+        each: None,
     }))
 }
 

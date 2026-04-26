@@ -15,6 +15,7 @@
 #[cfg(feature = "components")]
 mod component;
 mod css;
+mod internal_diagnostics;
 mod js;
 mod raw_text;
 
@@ -89,8 +90,11 @@ pub fn js(input: TokenStream) -> TokenStream {
 /// Experimental opt-in derive for builder-centric Maud component authoring.
 ///
 /// This derive is gated behind the `components` crate feature and is only a
-/// semantic entrypoint for now; the full component expansion is still under
-/// construction.
+/// partial surface right now. The current v1 slice is Bon-backed and supports
+/// prop builders only; slot-specific ergonomics are still under construction.
+///
+/// Current note: generated code references `::bon`, so downstream crates using
+/// this derive must also depend on `bon` directly for now.
 #[cfg(feature = "components")]
 #[proc_macro_derive(Component, attributes(mx))]
 pub fn component(input: TokenStream) -> TokenStream {

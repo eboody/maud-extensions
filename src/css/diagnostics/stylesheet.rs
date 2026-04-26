@@ -4,33 +4,33 @@ use syn::Error;
 
 use crate::css::validate::StylesheetError;
 
-use super::error;
+use crate::internal_diagnostics::error_with_help;
 
 pub(crate) fn invalid_stylesheet(span: Span, err: &StylesheetError) -> Error {
     match err {
-        StylesheetError::UnterminatedComment => error(
+        StylesheetError::UnterminatedComment => error_with_help(
             span,
             "css! found an unterminated comment",
             "close every `/*` comment with a matching `*/` before the end of the css! body",
         ),
-        StylesheetError::UnmatchedClosing { delimiter } => error(
+        StylesheetError::UnmatchedClosing { delimiter } => error_with_help(
             span,
             format!("css! found an unmatched closing `{delimiter}` in the stylesheet"),
             "remove the extra closing delimiter or add the matching opening delimiter earlier in the stylesheet",
         ),
-        StylesheetError::UnterminatedString => error(
+        StylesheetError::UnterminatedString => error_with_help(
             span,
             "css! found an unterminated string literal",
             "close the quoted CSS string before the end of the css! body",
         ),
-        StylesheetError::UnclosedDelimiter { delimiter } => error(
+        StylesheetError::UnclosedDelimiter { delimiter } => error_with_help(
             span,
             format!("css! found an unclosed `{delimiter}` delimiter in the stylesheet"),
             format!(
                 "close every `{delimiter}` with its matching delimiter before the end of the css! body"
             ),
         ),
-        StylesheetError::ParserRejectedTokens { location, message } => error(
+        StylesheetError::ParserRejectedTokens { location, message } => error_with_help(
             span,
             format!(
                 "css! could not parse CSS tokens after rendering the stylesheet (rendered CSS line {}, column {}: {message})",
