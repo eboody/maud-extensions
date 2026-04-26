@@ -1,5 +1,0 @@
-error: component! directives must appear before the root element.
-  --> tests/ui/component_directive_after_root.rs:10:9
-   |
-10 |         @js-once
-   |         ^

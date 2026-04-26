@@ -4,12 +4,12 @@ error: inline_css! found an unclosed `{` delimiter in the stylesheet
 4 |     css!("body { color: red;");
   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
   |
-  = note: this error originates in the macro `::maud_extensions::inline_css` (in Nightly builds, run with -Z macro-backtrace for more info)
+  = note: this error originates in the macro `css` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error: inline_css! found an unclosed `{` delimiter in the stylesheet
  --> tests/ui/css_invalid_stylesheet.rs:6:13
   |
-6 |     let _ = inline_css!(r#".card { display: block; "#);
-  |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+6 |     let _ = css!(r#".card { display: block; "#);
+  |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   |
-  = note: this error originates in the macro `inline_css` (in Nightly builds, run with -Z macro-backtrace for more info)
+  = note: this error originates in the macro `css` (in Nightly builds, run with -Z macro-backtrace for more info)

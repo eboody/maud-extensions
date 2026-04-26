@@ -1,39 +1,29 @@
-use maud::{Markup, Render, html};
-use maud_extensions::{component, css, js, surreal_scope_inline};
+use maud::html;
+use maud_extensions::{css, js};
 
-js! {
-    me().class_add("ready");
-}
+fn status_card(message: &str) -> maud::Markup {
+    html! {
+        article class="status-card" {
+            h2 { "System status" }
+            p class="message" { (message) }
 
-struct StatusCard<'a> {
-    message: &'a str,
-}
+            (css! {
+                me {
+                    border: 1px solid #ddd;
+                    padding: 12px;
+                }
+                me.ready {
+                    border-color: #16a34a;
+                }
+            })
 
-impl<'a> Render for StatusCard<'a> {
-    fn render(&self) -> Markup {
-        component! {
-            @js-once
-            article class="status-card" {
-                h2 { "System status" }
-                p class="message" { (self.message) }
-            }
+            (js!(once, {
+                me().class_add("ready");
+            }))
         }
     }
 }
 
-css! {
-    me {
-        border: 1px solid #ddd;
-        padding: 12px;
-    }
-    me.ready {
-        border-color: #16a34a;
-    }
-}
-
 fn main() {
-    let _page = html! {
-        head { (surreal_scope_inline!()) }
-        body { (StatusCard { message: "All systems operational" }) }
-    };
+    let _markup = status_card("All systems operational");
 }

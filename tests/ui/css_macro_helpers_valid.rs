@@ -1,7 +1,7 @@
-use maud_extensions::{css, inline_css};
+use maud_extensions::{css, js};
 
 fn main() {
-    css! {
+    let _ = css! {
         media!("(min-width: 48rem)", {
             me { padding: rem!(2); }
         })
@@ -18,11 +18,9 @@ fn main() {
             from { opacity: 0; }
             to { opacity: 1; }
         })
-    }
+    };
 
-    let _ = css();
-
-    let _ = inline_css! {
-        me { transition-duration: ms!(150); animation-duration: s!(2); }
+    let _ = js! {
+        me().style.transitionDuration = "150ms";
     };
 }

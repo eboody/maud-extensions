@@ -1,5 +1,0 @@
-error: component! expects optional directives first (`@js-once` or `@js-always`) followed by exactly one top-level element with a body block, e.g. component! { @js-once article { ... } }
- --> tests/ui/component_trailing_tokens.rs:6:9
-  |
-6 |         trailing
-  |         ^^^^^^^^

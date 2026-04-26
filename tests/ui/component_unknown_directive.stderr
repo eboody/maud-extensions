@@ -1,5 +1,0 @@
-error: unknown component! directive. Supported directives are `@js-once` and `@js-always`.
- --> tests/ui/component_unknown_directive.rs:9:10
-  |
-9 |         @foo-bar
-  |          ^^^
