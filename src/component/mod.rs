@@ -1,7 +1,9 @@
 // Experimental component authoring owner: derive parsing, semantic modeling,
 // and expansion for builder-centric Maud components.
+mod attrs;
 mod diagnostic;
 mod expand;
+mod field;
 mod input;
 mod model;
 
