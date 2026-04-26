@@ -14,6 +14,20 @@
 //! # Experimental components
 //!
 //! The component system is currently opt-in behind the `components` feature.
+//! The macro that turns impl-local component rendering and asset blocks on is:
+//!
+//! ```ignore
+//! #[mx::component]
+//! impl Card {
+//!     render! { ... }
+//!     css! { ... }
+//!     js!(once, { ... });
+//! }
+//! ```
+//!
+//! That impl macro is what makes `render!`, `css!`, and `js!` part of the
+//! component render pipeline.
+//!
 //! The preferred authoring pattern is:
 //!
 //! - `#[derive(Component)]` on the struct
@@ -27,7 +41,7 @@
 //! currently auto-injects impl-local CSS and JS into the rendered root.
 //!
 //! ```ignore
-//! use maud::{Markup, Render};
+//! use maud::Markup;
 //! use maud_extensions::{self as mx, Component, Slot};
 //!
 //! #[derive(Component)]
@@ -64,13 +78,13 @@
 //!         }
 //!     }
 //! }
-//!
-//! impl Render for Card {
-//!     fn render(&self) -> Markup {
-//!         mx::ComponentRender::__mx_render(self)
-//!     }
-//! }
 //! ```
+//!
+//! The broader browser-side runtime pieces this layers on top of today include:
+//!
+//! - Surreal: <https://github.com/gnat/surreal>
+//! - css-scope-inline: <https://github.com/gnat/css-scope-inline>
+//! - Preact Signals: <https://github.com/preactjs/signals>
 
 extern crate self as maud_extensions;
 

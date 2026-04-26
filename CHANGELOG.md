@@ -6,6 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-04-26
+
+### Fixed
+
+- Corrected the declared MSRV to Rust 1.88 to match the current dependency
+  graph and updated CI accordingly.
+
 ## [0.6.0] - 2026-04-26
 
 ### Added

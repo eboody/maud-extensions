@@ -28,7 +28,7 @@ or in `Cargo.toml`:
 
 ```toml
 [dependencies]
-mx = { package = "maud-extensions", version = "0.6.0" }
+mx = { package = "maud-extensions", version = "0.6.1" }
 ```
 
 ## Core Story
@@ -75,10 +75,24 @@ This is still the intended center of gravity:
 
 The component system is opt-in behind the `components` feature.
 
+The macro that turns the impl-local component surface on is:
+
+```rust
+#[mx::component]
+impl Card {
+    render! { ... }
+    css! { ... }
+    js!(once, { ... });
+}
+```
+
+That impl macro is what makes `render!`, `css!`, and `js!` part of the
+component render pipeline.
+
 Preferred authoring pattern:
 
 ```rust
-use maud::{Markup, Render};
+use maud::Markup;
 use maud_extensions::{self as mx, Component, Slot};
 
 #[derive(Component)]
@@ -121,12 +135,6 @@ impl Card {
     }
 }
 
-impl Render for Card {
-    fn render(&self) -> Markup {
-        mx::ComponentRender::__mx_render(self)
-    }
-}
-
 fn view() -> Markup {
     Card::new()
         .title("Profile")
@@ -149,10 +157,12 @@ What this gives you:
   - `js!(once, { ... })`
 - builder `.render()` automatically includes impl-local CSS and JS in the
   rendered root
+- no manual `impl Render` glue just to stitch component-local CSS/JS into the
+  output
 
 Current constraints:
 
-- use `Slot<T>` instead of `#[mx(slot)]`
+- use `Slot<T>` / `Slot<Vec<T>>` for slot declarations
 - if there are multiple slot fields, mark exactly one `#[mx(default)]`
 - repeated slots use `Slot<Vec<T>>` plus `#[mx(each = item_name)]`
 - `#[mx::component]` impls currently allow:
@@ -164,11 +174,25 @@ Mental model:
 
 - `#[derive(Component)]` owns fields, slots, and the Bon-backed builder
 - `#[mx::component]` owns the render root and colocated CSS/JS blocks
-- builder `.render()` goes through the hidden `ComponentRender` hook produced
-  by the impl macro
+- builder `.render()` goes through the render hook produced by the impl macro
 
 This keeps the builder and the impl-local render/assets story explicit without
 requiring manual `(Self::css())` / `(Self::js())` emission in the render body.
+
+## Bundled browser-side building blocks
+
+The current CSS/JS/component story is designed to layer on top of a few small
+browser-side tools:
+
+- [Surreal](https://github.com/gnat/surreal) for DOM ergonomics around `me()` /
+  `any()` style behavior
+- [css-scope-inline](https://github.com/gnat/css-scope-inline) for colocated
+  scoped CSS transforms
+- [Preact Signals](https://github.com/preactjs/signals) for the signals runtime
+  surface the crate builds on
+
+`maud-extensions` is not trying to replace those pieces; it is trying to make
+them feel coherent and component-local from Maud.
 
 If you want a more minimal component style, you can still stop at plain
 `html!` + `css!` + `js!`. The component system is intentionally a second layer,
