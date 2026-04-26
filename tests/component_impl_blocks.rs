@@ -1,7 +1,7 @@
 #![cfg(feature = "components")]
 
 use maud::{Markup, Render};
-use maud_extensions::{self as mx, Component, Slot};
+use maud_extensions::{self as mx, Component, ComponentRender, Slot};
 
 #[derive(Component, Debug)]
 struct Card {
@@ -32,7 +32,7 @@ impl Card {
 
 impl Render for Card {
     fn render(&self) -> Markup {
-        self.__mx_render()
+        ComponentRender::__mx_render(self)
     }
 }
 
@@ -50,4 +50,19 @@ fn component_impl_macro_generates_hidden_css_js_and_render_hooks() {
     assert!(markup.contains("<article class=\"card\">"));
     assert!(css.contains("padding:1rem"));
     assert!(js.contains("class_add(\"ready\")"));
+}
+
+#[test]
+fn component_builder_render_auto_injects_impl_block_css_and_js() {
+    let markup = Card::new()
+        .title("Profile")
+        .child(mx::css! { me { color: red; } })
+        .render()
+        .into_string();
+
+    assert!(markup.contains("<style"));
+    assert!(markup.contains("padding:1rem"));
+    assert!(markup.contains("<script>"));
+    assert!(markup.contains("class_add(\"ready\")"));
+    assert!(markup.contains("<article class=\"card\">"));
 }

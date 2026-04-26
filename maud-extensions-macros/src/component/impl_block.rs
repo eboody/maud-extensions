@@ -2,167 +2,125 @@
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
-use syn::{
-    Error, ImplItem, ImplItemMacro, ItemImpl, MacroDelimiter, Token,
-    parse::ParseStream,
-    spanned::Spanned,
-};
+use syn::{Error, ImplItem, ImplItemMacro, ItemImpl, spanned::Spanned};
 
-pub(crate) fn expand(mut input: ItemImpl) -> TokenStream {
-    let mut seen_render = false;
-    let mut seen_css = false;
-    let mut seen_js = false;
-    let mut errors = Vec::new();
+pub(crate) fn expand(input: ItemImpl) -> TokenStream {
+    match expand_impl(input) {
+        Ok(tokens) => TokenStream::from(tokens),
+        Err(err) => TokenStream::from(err.to_compile_error()),
+    }
+}
 
-    for item in &mut input.items {
-        let ImplItem::Macro(item_macro) = item else {
-            continue;
-        };
+fn expand_impl(mut input: ItemImpl) -> syn::Result<TokenStream2> {
+    let self_ty = (*input.self_ty).clone();
+    let mut render_tokens = None;
+    let mut css_tokens = None;
+    let mut js_tokens = None;
+    let mut retained_items = Vec::new();
 
-        match rewrite_macro_item(item_macro, &mut seen_render, &mut seen_css, &mut seen_js) {
-            Ok(new_item) => *item = new_item,
-            Err(err) => errors.push(err),
+    for item in input.items {
+        match item {
+            ImplItem::Macro(item_macro) => match macro_name(&item_macro)? {
+                Some("render") => {
+                    ensure_unique(&render_tokens, item_macro.mac.path.span(), "render")?;
+                    render_tokens = Some(parse_render_tokens(&item_macro)?);
+                }
+                Some("css") => {
+                    ensure_unique(&css_tokens, item_macro.mac.path.span(), "css")?;
+                    css_tokens = Some(parse_css_tokens(&item_macro)?);
+                }
+                Some("js") => {
+                    ensure_unique(&js_tokens, item_macro.mac.path.span(), "js")?;
+                    js_tokens = Some(parse_js_tokens(&item_macro)?);
+                }
+                _ => retained_items.push(ImplItem::Macro(item_macro)),
+            },
+            other => retained_items.push(other),
         }
     }
 
-    if let Some(err) = errors.into_iter().reduce(|mut left, right| {
-        left.combine(right);
-        left
-    }) {
-        return TokenStream::from(err.to_compile_error());
-    }
+    let render_tokens = render_tokens.ok_or_else(|| {
+        Error::new(
+            self_ty.span(),
+            "#[mx::component] impls require exactly one `render! { ... }` block",
+        )
+    })?;
 
-    TokenStream::from(quote! { #input })
-}
+    let css_tokens = css_tokens.unwrap_or_else(|| quote! { ::maud::PreEscaped(::std::string::String::new()) });
+    let js_tokens = js_tokens.unwrap_or_else(|| quote! { ::maud::PreEscaped(::std::string::String::new()) });
 
-fn rewrite_macro_item(
-    item_macro: &ImplItemMacro,
-    seen_render: &mut bool,
-    seen_css: &mut bool,
-    seen_js: &mut bool,
-) -> syn::Result<ImplItem> {
-    let Some(ident) = item_macro.mac.path.get_ident() else {
-        return Ok(ImplItem::Macro(item_macro.clone()));
-    };
+    input.items = retained_items;
 
-    match ident.to_string().as_str() {
-        "render" => {
-            if *seen_render {
-                return Err(Error::new(
-                    item_macro.mac.path.span(),
-                    "#[mx::component] allows at most one `render! { ... }` block per impl",
-                ));
+    Ok(quote! {
+        #input
+
+        impl #self_ty {
+            fn __mx_css() -> ::maud::Markup {
+                #css_tokens
             }
-            *seen_render = true;
-            Ok(parse_render_item(item_macro))
-        }
-        "css" => {
-            if *seen_css {
-                return Err(Error::new(
-                    item_macro.mac.path.span(),
-                    "#[mx::component] allows at most one `css! { ... }` block per impl",
-                ));
-            }
-            *seen_css = true;
-            Ok(parse_css_item(item_macro))
-        }
-        "js" => {
-            if *seen_js {
-                return Err(Error::new(
-                    item_macro.mac.path.span(),
-                    "#[mx::component] allows at most one `js! ...` block per impl",
-                ));
-            }
-            *seen_js = true;
-            parse_js_item(item_macro)
-        }
-        _ => Ok(ImplItem::Macro(item_macro.clone())),
-    }
-}
 
-fn parse_render_item(item_macro: &ImplItemMacro) -> ImplItem {
-    let body = &item_macro.mac.tokens;
-    syn::parse_quote! {
-        fn __mx_render(&self) -> ::maud::Markup {
-            ::maud::html! { #body }
-        }
-    }
-}
-
-fn parse_css_item(item_macro: &ImplItemMacro) -> ImplItem {
-    let body = &item_macro.mac.tokens;
-    syn::parse_quote! {
-        fn __mx_css() -> ::maud::Markup {
-            ::maud_extensions::css! { #body }
-        }
-    }
-}
-
-fn parse_js_item(item_macro: &ImplItemMacro) -> syn::Result<ImplItem> {
-    let mode_once = parse_js_mode(&item_macro.mac)?;
-    let body = js_body_tokens(&item_macro.mac)?;
-
-    Ok(if mode_once {
-        syn::parse_quote! {
             fn __mx_js() -> ::maud::Markup {
-                ::maud_extensions::js!(once, { #body })
+                #js_tokens
             }
         }
-    } else {
-        syn::parse_quote! {
-            fn __mx_js() -> ::maud::Markup {
-                ::maud_extensions::js! { #body }
+
+        impl ::maud_extensions::ComponentRender for #self_ty {
+            fn __mx_render(&self) -> ::maud::Markup {
+                #render_tokens
             }
         }
     })
 }
 
-fn parse_js_mode(mac: &syn::Macro) -> syn::Result<bool> {
-    match mac.delimiter {
-        MacroDelimiter::Brace(_) => Ok(false),
-        MacroDelimiter::Paren(_) => syn::parse::Parser::parse2(
-            |input: ParseStream| {
-                let ident: syn::Ident = input.parse()?;
-                if ident != "once" {
-                    return Err(Error::new(
-                        ident.span(),
-                        "`js!` in #[mx::component] impls only supports `js! { ... }` or `js!(once, { ... })`",
-                    ));
-                }
-                input.parse::<Token![,]>()?;
-                Ok(true)
-            },
-            mac.tokens.clone(),
-        ),
-        _ => Err(Error::new(
-            mac.delimiter.span().open(),
-            "`js!` in #[mx::component] impls only supports brace-delimited or parenthesized forms",
-        )),
-    }
+fn macro_name(item_macro: &ImplItemMacro) -> syn::Result<Option<&'static str>> {
+    let Some(ident) = item_macro.mac.path.get_ident() else {
+        return Ok(None);
+    };
+
+    Ok(match ident.to_string().as_str() {
+        "render" => Some("render"),
+        "css" => Some("css"),
+        "js" => Some("js"),
+        _ => None,
+    })
 }
 
-fn js_body_tokens(mac: &syn::Macro) -> syn::Result<TokenStream2> {
-    match mac.delimiter {
-        MacroDelimiter::Brace(_) => Ok(mac.tokens.clone()),
-        MacroDelimiter::Paren(_) => syn::parse::Parser::parse2(
-            |input: ParseStream| {
-                let _mode: syn::Ident = input.parse()?;
-                input.parse::<Token![,]>()?;
-                let group: syn::Block = input.parse()?;
-                let stmts = group.stmts;
-                Ok(quote! { #(#stmts)* })
-            },
-            mac.tokens.clone(),
-        )
-        .map_err(|_| {
-            Error::new(
-                mac.tokens.span(),
-                "`js!` in #[mx::component] impls only supports `js! { ... }` or `js!(once, { ... })`",
-            )
-        }),
-        _ => Err(Error::new(
-            mac.delimiter.span().open(),
-            "`js!` in #[mx::component] impls only supports brace-delimited or parenthesized forms",
-        )),
+fn ensure_unique(existing: &Option<TokenStream2>, span: proc_macro2::Span, name: &str) -> syn::Result<()> {
+    if existing.is_some() {
+        return Err(Error::new(
+            span,
+            format!("#[mx::component] impls allow at most one `{name}!` block"),
+        ));
     }
+    Ok(())
+}
+
+fn parse_render_tokens(item_macro: &ImplItemMacro) -> syn::Result<TokenStream2> {
+    let body = item_macro.mac.tokens.clone();
+    Ok(quote! {
+        ::maud::html! {
+            #body {
+                (Self::__mx_css())
+                (Self::__mx_js())
+            }
+        }
+    })
+}
+
+fn parse_css_tokens(item_macro: &ImplItemMacro) -> syn::Result<TokenStream2> {
+    let body = item_macro.mac.tokens.clone();
+    Ok(quote! {
+        ::maud_extensions::css! {
+            #body
+        }
+    })
+}
+
+fn parse_js_tokens(item_macro: &ImplItemMacro) -> syn::Result<TokenStream2> {
+    let body = item_macro.mac.tokens.clone();
+    Ok(quote! {
+        ::maud_extensions::js! {
+            #body
+        }
+    })
 }
