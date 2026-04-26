@@ -11,6 +11,13 @@
 //! - reexports `bon` so generated component code can depend only on
 //!   `maud-extensions`
 //!
+//! Recommended dependency spelling:
+//!
+//! ```toml
+//! [dependencies]
+//! mx = { package = "maud-extensions", version = "0.6.1", features = ["components"] }
+//! ```
+//!
 //! # Experimental components
 //!
 //! The component system is currently opt-in behind the `components` feature.
@@ -42,7 +49,7 @@
 //!
 //! ```ignore
 //! use maud::Markup;
-//! use maud_extensions::{self as mx, Component, Slot};
+//! use mx::{Component, Slot};
 //!
 //! #[derive(Component)]
 //! struct Card {

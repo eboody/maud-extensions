@@ -7,28 +7,19 @@ Small, local superpowers for Maud.
 
 ## Install
 
-```bash
-cargo add maud-extensions
-```
-
-If you want the experimental component system too:
-
-```bash
-cargo add maud-extensions --features components
-```
-
-If you want the crate to read as `mx::...` at call sites without renaming the
-published crate:
+Recommended: install the crate as `mx` so the macro and component surface reads
+well at call sites:
 
 ```bash
 cargo add maud-extensions --rename mx
 ```
 
-or in `Cargo.toml`:
+If you want the experimental component system too, enable `components` on the
+same dependency:
 
 ```toml
 [dependencies]
-mx = { package = "maud-extensions", version = "0.6.1" }
+mx = { package = "maud-extensions", version = "0.6.1", features = ["components"] }
 ```
 
 ## Core Story
@@ -93,7 +84,7 @@ Preferred authoring pattern:
 
 ```rust
 use maud::Markup;
-use maud_extensions::{self as mx, Component, Slot};
+use mx::{Component, Slot};
 
 #[derive(Component)]
 struct Card {
