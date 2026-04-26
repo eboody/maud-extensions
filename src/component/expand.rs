@@ -22,32 +22,42 @@ pub(crate) fn derive(component: syn::Result<Component>) -> TokenStream {
 }
 
 fn derive_bon_v1(component: &Component) -> Result<TokenStream2, TokenStream2> {
-    let default_slot = default_slot_field(component);
+    let default_slot = component.default_slot();
 
     for field in &component.fields {
         match &field.kind {
             FieldKind::Slot(slot) => {
-                if Some(&field.name) != default_slot.map(|field| &field.name) {
-                    return Err(diagnostic::unsupported_in_v1(
-                        component,
-                        &field.name.to_string(),
-                        "non-default slot semantics",
-                    ));
-                }
-
                 if slot.optional || slot.repeated || slot.each.is_some() {
-                    return Err(diagnostic::unsupported_in_v1(
-                        component,
-                        &field.name.to_string(),
-                        "optional or repeated default slot semantics",
-                    ));
+                    if Some(&field.name) == default_slot.map(|field| &field.name) {
+                        return Err(diagnostic::unsupported_in_v1(
+                            component,
+                            &field.name.to_string(),
+                            "optional or repeated default slot semantics",
+                        ));
+                    }
+
+                    if !(slot.optional && !slot.repeated && slot.each.is_none()) {
+                        return Err(diagnostic::unsupported_in_v1(
+                            component,
+                            &field.name.to_string(),
+                            "repeated or advanced named slot semantics",
+                        ));
+                    }
                 }
 
-                if !is_maud_markup(&field.ty) {
+                if Some(&field.name) == default_slot.map(|field| &field.name) {
+                    if !is_maud_markup(&field.ty) {
+                        return Err(diagnostic::unsupported_in_v1(
+                            component,
+                            &field.name.to_string(),
+                            "default slots with non-`maud::Markup` storage types",
+                        ));
+                    }
+                } else if !is_optional_maud_markup(&field.ty) {
                     return Err(diagnostic::unsupported_in_v1(
                         component,
                         &field.name.to_string(),
-                        "default slots with non-`maud::Markup` storage types",
+                        "named optional slots with non-`Option<maud::Markup>` storage types",
                     ));
                 }
             }
@@ -78,6 +88,12 @@ fn derive_bon_v1(component: &Component) -> Result<TokenStream2, TokenStream2> {
             default_slot_methods(field, &component.generics, &builder_name, &state_mod_name)
         })
         .transpose()?;
+    let named_slot_methods = component
+        .named_slots()
+        .map(|field| {
+            named_optional_slot_methods(field, &component.generics, &builder_name, &state_mod_name)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
     let inits = component
         .fields
         .iter()
@@ -109,6 +125,7 @@ fn derive_bon_v1(component: &Component) -> Result<TokenStream2, TokenStream2> {
 
         impl #builder_impl_generics #builder_name #builder_type_generics {
             #slot_methods
+            #( #named_slot_methods )*
 
             pub fn render(self) -> ::maud::Markup
             where
@@ -141,33 +158,22 @@ fn prop_param(field: &ComponentField) -> Result<TokenStream2, TokenStream2> {
             })
         }
         FieldKind::Slot(SlotField { default: true, .. }) => {
-            let internal_name = format_ident!("__mx_{}_internal", builder_name);
+            let internal_name = field.bon_required_internal_setter_ident();
 
             Ok(quote! {
                 #[builder(setters(name = #internal_name, vis = ""))]
                 #builder_name: #ty
             })
         }
-        FieldKind::Slot(_) => Err(diagnostic::unsupported_in_v1_placeholder()),
-    }
-}
+        FieldKind::Slot(SlotField { default: false, .. }) => {
+            let some_internal = field.bon_optional_some_setter_ident();
 
-fn default_slot_field(component: &Component) -> Option<&ComponentField> {
-    let mut default_slot = None;
-
-    for field in &component.fields {
-        let FieldKind::Slot(slot) = &field.kind else {
-            continue;
-        };
-
-        if !slot.default {
-            continue;
+            Ok(quote! {
+                #[builder(setters(some_fn(name = #some_internal, vis = "")))]
+                #builder_name: #ty
+            })
         }
-
-        default_slot = Some(field);
     }
-
-    default_slot
 }
 
 fn default_slot_methods(
@@ -177,9 +183,9 @@ fn default_slot_methods(
     state_mod_name: &syn::Ident,
 ) -> Result<TokenStream2, TokenStream2> {
     let slot_name = &field.name;
-    let internal_name = format_ident!("__mx_{}_internal", slot_name);
-    let state_assoc = upper_camel_ident(slot_name);
-    let set_state = format_ident!("Set{}", state_assoc);
+    let internal_name = field.bon_required_internal_setter_ident();
+    let state_assoc = field.state_assoc_ident();
+    let set_state = field.set_state_ident();
     let builder_after_slot = builder_type_with_state(
         generics,
         builder_name,
@@ -205,18 +211,31 @@ fn default_slot_methods(
     })
 }
 
-fn upper_camel_ident(ident: &syn::Ident) -> syn::Ident {
-    let mut out = String::new();
+fn named_optional_slot_methods(
+    field: &ComponentField,
+    generics: &Generics,
+    builder_name: &syn::Ident,
+    state_mod_name: &syn::Ident,
+) -> Result<TokenStream2, TokenStream2> {
+    let slot_name = &field.name;
+    let some_internal = field.bon_optional_some_setter_ident();
+    let state_assoc = field.state_assoc_ident();
+    let set_state = field.set_state_ident();
+    let builder_after_slot = builder_type_with_state(
+        generics,
+        builder_name,
+        quote! { #state_mod_name::#set_state<S> },
+    );
 
-    for part in ident.to_string().split('_').filter(|part| !part.is_empty()) {
-        let mut chars = part.chars();
-        if let Some(first) = chars.next() {
-            out.extend(first.to_uppercase());
-            out.push_str(chars.as_str());
+    Ok(quote! {
+        pub fn #slot_name<NewChild>(self, child: NewChild) -> #builder_after_slot
+        where
+            S::#state_assoc: #state_mod_name::IsUnset,
+            NewChild: ::maud::Render,
+        {
+            self.#some_internal(::maud::Render::render(&child))
         }
-    }
-
-    format_ident!("{}", out)
+    })
 }
 
 fn is_maud_markup(ty: &syn::Type) -> bool {
@@ -233,6 +252,27 @@ fn is_maud_markup(ty: &syn::Type) -> bool {
     };
 
     first.ident == "maud" && second.ident == "Markup"
+}
+
+fn is_optional_maud_markup(ty: &syn::Type) -> bool {
+    let syn::Type::Path(type_path) = ty else {
+        return false;
+    };
+
+    let Some(option_segment) = type_path.path.segments.last() else {
+        return false;
+    };
+    if option_segment.ident != "Option" {
+        return false;
+    }
+    let syn::PathArguments::AngleBracketed(arguments) = &option_segment.arguments else {
+        return false;
+    };
+    let Some(syn::GenericArgument::Type(inner)) = arguments.args.first() else {
+        return false;
+    };
+
+    is_maud_markup(inner)
 }
 
 fn builder_impl_generics(generics: &Generics, state_mod_name: &syn::Ident) -> TokenStream2 {

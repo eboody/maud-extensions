@@ -20,14 +20,6 @@ pub(crate) fn unsupported_in_v1(
     .to_compile_error()
 }
 
-pub(crate) fn unsupported_in_v1_placeholder() -> TokenStream {
-    syn::Error::new(
-        proc_macro2::Span::call_site(),
-        "#[derive(Component)] hit an unreachable v1 slot branch",
-    )
-    .to_compile_error()
-}
-
 pub(crate) fn from_model_error(err: Error) -> TokenStream {
     let rewritten = match err.to_string().as_str() {
         "component-only-structs" => Error::new(

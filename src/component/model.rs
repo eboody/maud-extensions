@@ -32,6 +32,20 @@ impl Component {
             fields,
         })
     }
+
+    pub(crate) fn default_slot(&self) -> Option<&ComponentField> {
+        self.fields
+            .iter()
+            .find(|field| field.slot().is_some_and(|slot| slot.default))
+    }
+
+    pub(crate) fn named_slots(&self) -> impl Iterator<Item = &ComponentField> {
+        let default_slot_name = self.default_slot().map(|field| &field.name);
+
+        self.fields
+            .iter()
+            .filter(move |field| field.is_slot() && Some(&field.name) != default_slot_name)
+    }
 }
 
 fn parse_fields(component_name: &Ident, data: DataStruct) -> Result<Vec<ComponentField>> {

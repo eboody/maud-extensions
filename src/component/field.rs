@@ -1,4 +1,5 @@
 // Semantic component field classification.
+use quote::format_ident;
 use syn::{Field, GenericArgument, Ident, PathArguments, Result, Type};
 
 use crate::component::attrs::{DefaultValue, FieldAttrs, parse_field_attrs};
@@ -58,6 +59,49 @@ impl ComponentField {
             ty,
             kind,
         })
+    }
+
+    pub(crate) fn is_slot(&self) -> bool {
+        matches!(self.kind, FieldKind::Slot(_))
+    }
+
+    pub(crate) fn slot(&self) -> Option<&SlotField> {
+        let FieldKind::Slot(slot) = &self.kind else {
+            return None;
+        };
+        Some(slot)
+    }
+
+    pub(crate) fn state_assoc_ident(&self) -> Ident {
+        let mut out = String::new();
+
+        for part in self
+            .name
+            .to_string()
+            .split('_')
+            .filter(|part| !part.is_empty())
+        {
+            let mut chars = part.chars();
+            if let Some(first) = chars.next() {
+                out.extend(first.to_uppercase());
+                out.push_str(chars.as_str());
+            }
+        }
+
+        format_ident!("{}", out)
+    }
+
+    pub(crate) fn set_state_ident(&self) -> Ident {
+        let state_assoc = self.state_assoc_ident();
+        format_ident!("Set{}", state_assoc)
+    }
+
+    pub(crate) fn bon_required_internal_setter_ident(&self) -> Ident {
+        format_ident!("__mx_{}_internal", self.name)
+    }
+
+    pub(crate) fn bon_optional_some_setter_ident(&self) -> Ident {
+        format_ident!("__mx_{}_some_internal", self.name)
     }
 }
 

@@ -14,8 +14,12 @@ struct Badge {
 #[derive(Component, Debug)]
 struct Card {
     title: String,
+    #[mx(slot)]
+    header: Option<maud::Markup>,
     #[mx(slot, default)]
     body: maud::Markup,
+    #[mx(slot)]
+    footer: Option<maud::Markup>,
 }
 
 impl Render for Badge {
@@ -36,8 +40,14 @@ impl Render for Card {
     fn render(&self) -> Markup {
         html! {
             article class="card" {
+                @if let Some(header) = &self.header {
+                    header class="header" { (header) }
+                }
                 h2 { (self.title) }
                 div class="body" { (self.body) }
+                @if let Some(footer) = &self.footer {
+                    footer class="footer" { (footer) }
+                }
             }
         }
     }
@@ -93,4 +103,32 @@ fn component_v1_default_slot_supports_named_slot_setter_accepting_render() {
 
     let markup = card.render().into_string();
     assert!(markup.contains("<div class=\"body\"><strong>Details</strong></div>"));
+}
+
+#[test]
+fn component_v1_named_optional_slots_accept_renderables() {
+    let markup = Card::new()
+        .title("Profile")
+        .header(html! { span { "Welcome" } })
+        .child(html! { p { "Body" } })
+        .footer(html! { button { "Save" } })
+        .render()
+        .into_string();
+
+    assert!(markup.contains("<header class=\"header\"><span>Welcome</span></header>"));
+    assert!(markup.contains("<footer class=\"footer\"><button>Save</button></footer>"));
+}
+
+#[test]
+fn component_v1_named_optional_slots_support_maybe_setters() {
+    let markup = Card::new()
+        .title("Profile")
+        .maybe_header(Some(html! { em { "Heads up" } }))
+        .child(html! { p { "Body" } })
+        .maybe_footer(None::<maud::Markup>)
+        .render()
+        .into_string();
+
+    assert!(markup.contains("<header class=\"header\"><em>Heads up</em></header>"));
+    assert!(!markup.contains("class=\"footer\""));
 }
