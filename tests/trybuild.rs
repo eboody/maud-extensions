@@ -14,3 +14,14 @@ fn reset_ui() {
     t.compile_fail("tests/ui/js_invalid_script.rs");
     t.compile_fail("tests/ui/js_named_helper_trailing_tokens.rs");
 }
+
+#[cfg(feature = "components")]
+#[test]
+fn component_ui() {
+    let t = trybuild::TestCases::new();
+    t.compile_fail("tests/ui/component_tuple_struct.rs");
+    t.compile_fail("tests/ui/component_default_slot_wrong_type.rs");
+    t.compile_fail("tests/ui/component_named_slot_wrong_type.rs");
+    t.compile_fail("tests/ui/component_each_non_vec.rs");
+    t.compile_fail("tests/ui/component_repeated_slot_wrong_type.rs");
+}
