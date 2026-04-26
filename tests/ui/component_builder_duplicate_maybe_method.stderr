@@ -1,5 +1,0 @@
-error: duplicate generated builder method `maybe_header`.
- --> tests/ui/component_builder_duplicate_maybe_method.rs:7:5
-  |
-7 |     maybe_header: &'static str,
-  |     ^^^^^^^^^^^^

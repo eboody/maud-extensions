@@ -1,0 +1,19 @@
+error: `render!` must contain exactly one top-level element with one trailing `{ ... }` body block
+  --> tests/ui/component_impl_multiple_roots.rs:12:5
+   |
+12 |     render! {
+   |     ^^^^^^
+
+error[E0277]: the trait bound `BadRoots: maud_extensions::ComponentRender` is not satisfied
+ --> tests/ui/component_impl_multiple_roots.rs:4:10
+  |
+4 | #[derive(Component)]
+  |          ^^^^^^^^^ unsatisfied trait bound
+  |
+help: the trait `maud_extensions::ComponentRender` is not implemented for `BadRoots`
+ --> tests/ui/component_impl_multiple_roots.rs:5:1
+  |
+5 | struct BadRoots {
+  | ^^^^^^^^^^^^^^^
+  = help: see issue #48214
+  = note: this error originates in the derive macro `Component` (in Nightly builds, run with -Z macro-backtrace for more info)

@@ -1,5 +1,0 @@
-error: component! accepts at most one JS mode directive (`@js-once` or `@js-always`).
-  --> tests/ui/component_conflicting_directives.rs:10:9
-   |
-10 |         @js-always
-   |         ^

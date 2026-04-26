@@ -2,33 +2,23 @@
 
 [![crates.io](https://img.shields.io/crates/v/maud-extensions.svg)](https://crates.io/crates/maud-extensions)
 [![docs.rs](https://img.shields.io/docsrs/maud-extensions)](https://docs.rs/maud-extensions)
-[![license](https://img.shields.io/crates/l/maud-extensions.svg)](https://github.com/eboody/maud-extensions)
 
-Proc macros for Maud that make component-style view code, bundled browser
-runtime helpers, and typed shell components easier to author.
-
-This crate has three main jobs:
-- file-scoped component helpers with `js!`, `css!`, and `component!`
-- direct emitters and bundled runtimes such as `inline_js!()`,
-  `surreal_scope_inline!()`, and `surreal_scope_signals_inline!()`
-- typed builder generation for layout and shell components with
-  `#[derive(ComponentBuilder)]`
-
-Signals support stays JS-first: Maud markup provides anchors, while `js!`
-owns signals, effects, and DOM binding. The companion crate
-[`maud-extensions-runtime`](https://crates.io/crates/maud-extensions-runtime)
-still provides the older string-based slot transport, but for new shell and
-layout components the preferred path is `ComponentBuilder`.
+Small, local superpowers for Maud.
 
 ## Install
 
 ```bash
 cargo add maud-extensions
-cargo add maud-extensions-runtime # only needed for the lower-level runtime slot transport
 ```
 
-If you want the crate to read as `mx::...` at call sites without renaming the published crate,
-add it with a dependency alias:
+If you want the experimental component system too:
+
+```bash
+cargo add maud-extensions --features components
+```
+
+If you want the crate to read as `mx::...` at call sites without renaming the
+published crate:
 
 ```bash
 cargo add maud-extensions --rename mx
@@ -41,339 +31,230 @@ or in `Cargo.toml`:
 mx = { package = "maud-extensions", version = "0.5.4" }
 ```
 
-Then you can write `mx::component!`, `mx::css!`, `mx::ComponentBuilder`, and so on.
+## Core Story
 
-Support policy:
-- MSRV: Rust 1.85
-- supported Maud version: 0.27
-
-## Choose A Workflow
-
-Use `component!` when the component owns its own DOM, local CSS, and local JS:
+Write plain `html!` and emit local CSS and JS where they belong:
 
 ```rust
-use maud::{html, Markup, Render};
-use maud_extensions::{component, css, js, surreal_scope_inline};
+use maud::html;
+use maud_extensions::{css, js};
 
-js! {
-    me().class_add("ready");
-}
+fn status_card(message: &str) -> maud::Markup {
+    html! {
+        article class="status-card" {
+            h2 { "System status" }
+            p class="message" { (message) }
 
-struct StatusCard<'a> {
-    message: &'a str,
-}
+            (css! {
+                me {
+                    border: 1px solid #ddd;
+                    border-radius: 10px;
+                    padding: 12px;
+                }
+                me.ready {
+                    border-color: #16a34a;
+                }
+            })
 
-impl<'a> Render for StatusCard<'a> {
-    fn render(&self) -> Markup {
-        component! {
-            @js-once
-            article class="status-card" {
-                h2 { "System status" }
-                p class="message" { (self.message) }
-            }
+            (js!(once, {
+                me().class_add("ready");
+            }))
         }
     }
-}
-
-css! {
-    me {
-        border: 1px solid #ddd;
-        border-radius: 10px;
-        padding: 12px;
-    }
-    me.ready {
-        border-color: #16a34a;
-    }
-}
-
-css! {
-    raw!(r#":root { --font-display: 'Newsreader', Georgia, serif; }"#)
-}
-
-css! {
-    media!("(min-width: 48rem)", {
-        me { padding: rem!(2); }
-    })
-    supports!("(display: grid)", {
-        me { gap: px!(12); }
-    })
-}
-
-let page = html! {
-    head { (surreal_scope_inline!()) }
-    body { (StatusCard { message: "All systems operational" }) }
-};
-```
-
-`css! { ... }` still defines the default `css()` helper that `component!`
-injects automatically. If the same scope needs extra stylesheet helpers, use
-`css! { "card_border", { ... } }` to generate a named function such as
-`card_border()`. Use `raw!(r#"..."#)` inside `css!` or `inline_css!` as an
-escape hatch for CSS fragments that are not valid Rust token syntax, such as
-single-quoted selectors or font-family values. For CSS syntax that is awkward in
-Rust tokens but still structured, `css!` also supports helper macros like
-`media!(...)`, `container!(...)`, `supports!(...)`, `layer!(...)`,
-`keyframes!(...)`, and unit helpers such as `rem!(2)` / `px!(12)` / `pct!(100)`.
-
-For larger token or theme stylesheets, prefer wrapping the non-Rust CSS slice in
-one `raw!` fragment instead of trying to escape it piecemeal:
-
-```rust
-use maud_extensions::css;
-
-fn design_tokens() -> maud::Markup {
-    css! { "design_tokens", raw!(r#"
-        :root {
-            --font-display: 'Newsreader', Georgia, serif;
-            --font-sans: 'Space Grotesk', system-ui, sans-serif;
-        }
-
-        :root,
-        [data-theme='light'] {
-            color-scheme: light;
-        }
-
-        @media (prefers-color-scheme: dark) {
-            [data-theme='system'] {
-                color-scheme: dark;
-            }
-        }
-    "#) }
-
-    design_tokens()
 }
 ```
 
-Use `#[derive(ComponentBuilder)]` for new shell and layout components with
-props and named content regions. This is the preferred path when the regions
-can be expressed as typed fields:
+This is still the intended center of gravity:
+
+- no wrapper component macro
+- no hidden CSS/JS injection
+- no stringly helper names
+- plain Maud remains the main language
+
+## Experimental Components
+
+The component system is opt-in behind the `components` feature.
+
+Preferred authoring pattern:
 
 ```rust
-use maud::{html, Markup, Render};
-use maud_extensions::ComponentBuilder;
+use maud::{Markup, Render};
+use maud_extensions::{self as mx, Component, Slot};
 
-#[derive(Clone)]
-struct ActionButton {
-    label: &'static str,
-}
-
-impl Render for ActionButton {
-    fn render(&self) -> Markup {
-        html! { button type="button" { (self.label) } }
-    }
-}
-
-#[derive(ComponentBuilder)]
+#[derive(Component)]
 struct Card {
-    tone: &'static str,
-    #[slot]
-    header: Option<Markup>,
-    #[slot(default)]
-    body: Markup,
-    #[builder(each = "action")]
-    actions: Vec<ActionButton>,
+    title: String,
+    header: Slot<Markup>,
+    #[mx(default)]
+    body: Slot<Markup>,
+    footer: Slot<Markup>,
+    #[mx(each = action)]
+    actions: Slot<Vec<Markup>>,
+}
+
+#[mx::component]
+impl Card {
+    css! {
+        me {
+            padding: 1rem;
+            border: 1px solid #ddd;
+        }
+
+        me .actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+    }
+
+    js!(once, {
+        me().class_add("ready");
+    });
+
+    render! {
+        article.card {
+            header class="header" { (self.header) }
+            h2 { (self.title) }
+            div.body { (self.body) }
+            footer class="footer" { (self.footer) }
+            div.actions { (self.actions) }
+        }
+    }
 }
 
 impl Render for Card {
     fn render(&self) -> Markup {
-        html! {
-            article class={ "card " (self.tone) } {
-                @if let Some(header) = &self.header {
-                    header class="card-header" { (header) }
-                }
-                main class="card-body" { (self.body) }
-                @if !self.actions.is_empty() {
-                    footer class="card-actions" {
-                        @for action in &self.actions {
-                            (action)
-                        }
-                    }
-                }
-            }
-        }
+        mx::ComponentRender::__mx_render(self)
     }
 }
 
-let view = Card::new()
-    .tone("info")
-    .header(html! { h2 { "Status" } })
-    .body(html! { p { "All systems green" } })
-    .action(ActionButton { label: "Retry" })
-    .action(ActionButton { label: "Dismiss" })
-    .render();
+fn view() -> Markup {
+    Card::new()
+        .title("Profile")
+        .header(maud::html! { span { "Welcome" } })
+        .child(maud::html! { p { "Body" } })
+        .footer(maud::html! { button { "Save" } })
+        .action(maud::html! { button { "Edit" } })
+        .render()
+}
 ```
 
-Use the runtime slot API from `maud-extensions-runtime` only when you really
-need open caller-owned child structure, or when you are keeping an existing
-slot-based component. That API is the lower-level string-based transport layer;
-see [examples/slots.rs](examples/slots.rs) and the
-[`maud-extensions-runtime` docs](https://docs.rs/maud-extensions-runtime)
-when you actually need it.
+What this gives you:
 
-## `ComponentBuilder`
+- Bon-backed typed builders
+- `Slot<Markup>` and `Slot<Vec<Markup>>` as the slot declaration path
+- `#[mx(default)]` for the single default slot
+- `#[mx::component] impl` blocks with colocated:
+  - `render! { ... }`
+  - `css! { ... }`
+  - `js!(once, { ... })`
+- builder `.render()` automatically includes impl-local CSS and JS in the
+  rendered root
 
-`ComponentBuilder` is the preferred API for new typed shell and layout
-components. It doesn't try to invent new Maud syntax. It generates a normal
-Rust builder from the component struct you already want to render.
+Current constraints:
 
-What it generates:
-- `Type::new()` and `Type::builder()`
-- one setter per field
-- `maybe_field(option)` helpers for `Option<T>` fields using the exact field type
-- `#[builder(each = "...")]` item setters for `Vec<T>` fields
-- `.build()` once all required fields are present
-- `.render()` on the complete builder when the component implements `Render`
-- `From<CompleteBuilder> for Type`
+- use `Slot<T>` instead of `#[mx(slot)]`
+- if there are multiple slot fields, mark exactly one `#[mx(default)]`
+- repeated slots use `Slot<Vec<T>>` plus `#[mx(each = item_name)]`
+- `#[mx::component]` impls currently allow:
+  - exactly one `render!`
+  - at most one `css!`
+  - at most one `js!`
 
-Field rules:
-- plain fields are required
-- `Option<T>` fields are optional
-- `Option<T>` fields also get a `maybe_field(Option<T>)` helper
-- `Vec<T>` fields default to empty and can use `#[builder(each = "...")]`
-- `#[builder(default)]` makes a non-`Option`, non-`Vec` field use `Default`
-- `#[slot]` and `#[slot(default)]` record the component's content-region
-  contract for this builder-core layer and for later syntax sugar
+Mental model:
 
-Markup ergonomics:
-- regular setters for fields written as `Markup`, `maud::Markup`, or
-  `::maud::Markup` accept any `impl Render`
-- that applies to single-markup fields, optional markup fields, and repeated
-  `Vec<Markup>` item setters
-- `maybe_field(...)` helpers for optional markup fields take `Option<Markup>`
+- `#[derive(Component)]` owns fields, slots, and the Bon-backed builder
+- `#[mx::component]` owns the render root and colocated CSS/JS blocks
+- builder `.render()` goes through the hidden `ComponentRender` hook produced
+  by the impl macro
 
-Current limits:
-- named structs only
-- at most one `#[slot(default)]` field
-- `.build()` is still required when you need the concrete component value
-- there is no `compose!` macro or block syntax yet
-- the builder offers a consuming `.render()` convenience instead of implementing `Render`
+This keeps the builder and the impl-local render/assets story explicit without
+requiring manual `(Self::css())` / `(Self::js())` emission in the render body.
 
-## Runtime Slots
+If you want a more minimal component style, you can still stop at plain
+`html!` + `css!` + `js!`. The component system is intentionally a second layer,
+not the only way to use the crate.
 
-The runtime slot API is still supported, but it is no longer the aspirational
-surface for new shell and layout components.
+## Named Helpers
 
-Why it exists:
-- it works for fully open caller-owned child structure
-- it keeps existing slot-based components working
-- it provides one generic transport path over plain `Render`
-
-Why it is lower-level:
-- slot names are stringly
-- child transport goes through `.with_children(...)`
-- the slot contract stays outside the type system
-- missing or extra named slots are runtime behavior, not builder-shape errors
-
-Use it when openness is the point. Otherwise prefer `ComponentBuilder`.
-
-## Signals
-
-Signals support is intentionally JS-first. Render stable DOM anchors in Maud,
-then create signals and bindings in `js!`.
+When reuse helps, define local helper functions with Rust identifiers:
 
 ```rust
-use maud::{html, Markup, Render};
-use maud_extensions::{component, css, js, surreal_scope_signals_inline};
+use maud::html;
+use maud_extensions::{css, js};
 
-js! {
-    const count = mx.signal(0);
-    const active = mx.computed(() => count.value > 0);
+css!(card_css, {
+    me { gap: px!(12); }
+});
 
-    me(".count").bindText(count);
-    me().bindClass("active", active);
-    me(".inc").on("click", () => count.value++);
-}
+js!(card_js, once, {
+    me().class_add("ready");
+});
 
-struct Counter;
-
-impl Render for Counter {
-    fn render(&self) -> Markup {
-        component! {
-            @js-once
-            section class="counter" {
-                p { "Count: " span class="count" {} }
-                button class="inc" type="button" { "+" }
-            }
+fn card() -> maud::Markup {
+    html! {
+        article.card {
+            (card_css())
+            (card_js())
+            "Hello"
         }
     }
 }
-
-css! {
-    me.active { border-color: #16a34a; }
-}
-
-let page = html! {
-    head { (surreal_scope_signals_inline!()) }
-    body { (Counter) }
-};
 ```
 
-Supported v1 binders:
-- `bindText(source)`
-- `bindAttr(name, source)`
-- `bindClass(name, source)`
-- `bindShow(source)`
+Supported `css!` forms:
 
-Rules:
-- binders live on `window.mx` and on Surreal-sugared handles such as
-  `me(".count")`
-- `source` can be a Signals object or a function
-- function sources run inside `mx.effect(...)`
-- binder cleanup is scoped to `component!` roots
-- `surreal_scope_signals_inline!()` is the supported runtime include when a
-  page uses `component!`, `js!`, and Signals binders together
+- `css! { ... }`
+- `css!(name, { ... })`
 
-## Runtime And Direct Emitters
+Supported `js!` forms:
 
-Bundled runtime macros:
-- `surreal_scope_inline!()`
-  - emits bundled `surreal.js` and `css-scope-inline.js`
-- `signals_inline!()`
-  - emits bundled `@preact/signals-core` and the Maud Signals adapter
-- `surreal_scope_signals_inline!()`
-  - emits `surreal.js`, `css-scope-inline.js`, `@preact/signals-core`, and
-    the Maud Signals adapter in the right order
+- `js! { ... }`
+- `js!(once, { ... })`
+- `js!(name, { ... })`
+- `js!(name, once, { ... })`
 
-Direct emitters:
-- `inline_js! { ... }` / `inline_css! { ... }`
-  - emit direct `<script>` / `<style>` tags
-- `js_file!(...)` / `css_file!(...)`
-  - inline file contents using `include_str!`-style paths
-- `font_face!(...)` / `font_faces!(...)`
-  - emit base64 `@font-face` CSS without adding another dependency
+## CSS Helper Macros
 
-Manual composition rule:
-- if you emit `surreal_scope_inline!()` and `signals_inline!()` separately,
-  put `surreal_scope_inline!()` first so the Signals adapter can extend
-  Surreal before component `js!` blocks run
+Inside `css!` token mode you can use:
 
-## Limits And Guarantees
+- `raw!(r#"..."#)`
+- `media!(prelude, { ... })`
+- `container!(prelude, { ... })`
+- `supports!(prelude, { ... })`
+- `layer!(prelude, { ... })`
+- `keyframes!(prelude, { ... })`
+- unit helpers:
+  - `rem!(...)`
+  - `em!(...)`
+  - `px!(...)`
+  - `pct!(...)`
+  - `vw!(...)`
+  - `vh!(...)`
+  - `ms!(...)`
+  - `s!(...)`
 
-- `component!` performs compile-time shape checks over the token stream it
-  sees; it only checks the token shape the macro can observe
-- `component!` accepts exactly one top-level element with a body block
-- `js!` and `css!` must both be in scope for `component!`, even if one is empty
-- `inline_js!` validates JavaScript with SWC before generating markup
-- `inline_css!` runs a lightweight CSS syntax check before generating markup
-- token-style `css!` / `inline_css!` only see Rust-tokenizable input; use
-  `raw!(r#"..."#)` or `css_file!(...)` for arbitrary CSS fragments
-- slot runtime helpers fail closed outside `.with_children(...)`
-- malformed slot transport markers fail closed into default-slot content
-- runtime slots are a lower-level transport layer; for new shell/layout
-  components prefer `ComponentBuilder`
-- `ComponentBuilder` observes lexical type forms, not full type resolution, so
-  type aliases to `Markup`, `Option`, or `Vec` are treated as ordinary fields
+Example:
 
-## Read Next
+```rust
+use maud_extensions::css;
 
-- [examples/component_card.rs](examples/component_card.rs)
-- [examples/signals_counter.rs](examples/signals_counter.rs)
-- [examples/runtime_injection.rs](examples/runtime_injection.rs)
-- [examples/slots.rs](examples/slots.rs)
-- [tests/component_builder.rs](tests/component_builder.rs)
-- [docs.rs for `maud-extensions`](https://docs.rs/maud-extensions)
-- [docs.rs for `maud-extensions-runtime`](https://docs.rs/maud-extensions-runtime)
+fn responsive_styles() -> maud::Markup {
+    css! {
+        media!("(min-width: 48rem)", {
+            me { padding: rem!(2); }
+        })
+        supports!("(display: grid)", {
+            me { gap: px!(12); }
+        })
+    }
+}
+```
 
-## License
+## Limits
 
-MIT OR Apache-2.0
+- `css!` and `js!` are placement-sensitive local emitters
+- `js!(once, ...)` relies on a `data-mx-js-ran` marker on the parent element
+- CSS token mode only sees Rust-tokenizable input; use `raw!(...)` for arbitrary
+  CSS fragments
+- JavaScript is validated with SWC before emission
+- CSS is checked for lightweight syntax and raw-text safety before emission

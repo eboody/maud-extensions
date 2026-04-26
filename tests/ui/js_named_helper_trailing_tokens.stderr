@@ -1,0 +1,6 @@
+error: unexpected trailing tokens after named js! helper
+       help: js! named helpers only accept `js!(helper_name, { ... })`, `js!(helper_name, "...")`, `js!(helper_name, once, { ... })`, or `js!(helper_name, once, "...")`
+ --> tests/ui/js_named_helper_trailing_tokens.rs:6:8
+  |
+6 |     }, trailing);
+  |        ^^^^^^^^

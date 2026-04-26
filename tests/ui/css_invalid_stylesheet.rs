@@ -1,7 +1,7 @@
-use maud_extensions::{css, inline_css};
+use maud_extensions::css;
 
 fn main() {
     css!("body { color: red;");
 
-    let _ = inline_css!(r#".card { display: block; "#);
+    let _ = css!(r#".card { display: block; "#);
 }

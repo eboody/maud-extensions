@@ -1,5 +1,0 @@
-error: `#[builder(each = "...")]` expects a valid Rust identifier.
- --> tests/ui/component_builder_each_invalid_identifier.rs:6:22
-  |
-6 |     #[builder(each = "not-valid-name")]
-  |                      ^^^^^^^^^^^^^^^^

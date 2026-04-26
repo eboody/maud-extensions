@@ -1,17 +1,20 @@
-use maud_extensions::{component, css, js};
+use maud::html;
+use maud_extensions::{css, js};
 
 fn main() {
-    js! {}
-
-    css! { "card_border", {
+    css!(card_border, {
         .card { border: 1px solid #ddd; }
-    } }
+    });
 
-    let _ = card_border();
+    js!(card_js, once, {
+        me().class_add("ready");
+    });
 
-    let _view = component! {
-        div class="card" { "ok" }
+    let _ = html! {
+        div class="card" {
+            (card_border())
+            (card_js())
+            "ok"
+        }
     };
-
-    css! {}
 }

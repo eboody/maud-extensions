@@ -1,0 +1,6 @@
+error: unexpected trailing tokens after named css! helper
+       help: css! named helpers only accept `css!(helper_name, { ... })` or `css!(helper_name, "...")`
+ --> tests/ui/css_named_helper_trailing_tokens.rs:6:8
+  |
+6 |     }, trailing);
+  |        ^^^^^^^^

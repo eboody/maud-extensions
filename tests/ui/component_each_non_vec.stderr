@@ -1,0 +1,5 @@
+error: `#[mx(each = ...)]` only applies to `Vec<T>` fields
+ --> tests/ui/component_each_non_vec.rs:6:10
+  |
+6 |     #[mx(each = action)]
+  |          ^^^^

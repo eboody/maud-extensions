@@ -1,13 +1,11 @@
-use maud_extensions::{css, inline_css};
+use maud_extensions::css;
 
 fn main() {
-    css! {
+    let _ = css! {
         raw!(r#":root { --font-display: 'Newsreader', Georgia, serif; }"#)
-    }
+    };
 
-    let _ = css();
-
-    let _ = inline_css! {
+    let _ = css! {
         raw!(r#"[data-theme='light'] { color-scheme: light; }"#)
     };
 }

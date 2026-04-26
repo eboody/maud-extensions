@@ -1,0 +1,25 @@
+[package]
+name = "maud-extensions-macros"
+version = "0.5.4"
+edition = "2024"
+rust-version = "1.85"
+description = "Proc-macro implementation for maud-extensions."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/eboody/maud-extensions"
+homepage = "https://github.com/eboody/maud-extensions"
+
+[lib]
+name = "maud_extensions_macros"
+proc-macro = true
+
+[features]
+default = []
+components = []
+
+[dependencies]
+cssparser = "0.33.0"
+proc-macro2 = "1.0.101"
+quote = "1.0.41"
+swc_common = "18.0.1"
+swc_ecma_parser = "33.0.1"
+syn = { version = "2.0.106", features = ["full"] }

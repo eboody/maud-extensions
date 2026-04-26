@@ -1,5 +1,0 @@
-error: font_face! font-weight may only contain ASCII letters, digits, spaces, '-', '.', and '%'.
- --> tests/ui/font_face_invalid_metadata.rs:7:9
-  |
-7 |         "normal; color:red",
-  |         ^^^^^^^^^^^^^^^^^^^
