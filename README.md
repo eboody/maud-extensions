@@ -3,7 +3,7 @@
 [![crates.io](https://img.shields.io/crates/v/maud-extensions.svg)](https://crates.io/crates/maud-extensions)
 [![docs.rs](https://img.shields.io/docsrs/maud-extensions)](https://docs.rs/maud-extensions)
 
-Proc macros for Maud with a deliberately small default story.
+Small, local superpowers for Maud.
 
 ## Install
 
@@ -31,7 +31,7 @@ or in `Cargo.toml`:
 mx = { package = "maud-extensions", version = "0.5.4" }
 ```
 
-## Beautiful Default
+## Core Story
 
 Write plain `html!` and emit local CSS and JS where they belong:
 
@@ -64,7 +64,7 @@ fn status_card(message: &str) -> maud::Markup {
 }
 ```
 
-This is the intended center of gravity:
+This is still the intended center of gravity:
 
 - no wrapper component macro
 - no hidden CSS/JS injection
@@ -73,9 +73,9 @@ This is the intended center of gravity:
 
 ## Experimental Components
 
-The current component story is opt-in behind the `components` feature.
+The component system is opt-in behind the `components` feature.
 
-Preferred shape:
+Preferred authoring pattern:
 
 ```rust
 use maud::{Markup, Render};
@@ -150,7 +150,7 @@ What this gives you:
 - builder `.render()` automatically includes impl-local CSS and JS in the
   rendered root
 
-Current component constraints:
+Current constraints:
 
 - use `Slot<T>` instead of `#[mx(slot)]`
 - if there are multiple slot fields, mark exactly one `#[mx(default)]`
@@ -160,15 +160,19 @@ Current component constraints:
   - at most one `css!`
   - at most one `js!`
 
-Why the split between struct and impl?
+Mental model:
 
-- `#[derive(Component)]` owns field parsing and Bon-backed builder generation
-- `#[mx::component]` owns impl-local rendering and colocated CSS/JS blocks
-- builder `.render()` uses the hidden `ComponentRender` hook produced by the
-  impl macro
+- `#[derive(Component)]` owns fields, slots, and the Bon-backed builder
+- `#[mx::component]` owns the render root and colocated CSS/JS blocks
+- builder `.render()` goes through the hidden `ComponentRender` hook produced
+  by the impl macro
 
 This keeps the builder and the impl-local render/assets story explicit without
-requiring manual `(Self::css())` or `(Self::js())` emission in the render body.
+requiring manual `(Self::css())` / `(Self::js())` emission in the render body.
+
+If you want a more minimal component style, you can still stop at plain
+`html!` + `css!` + `js!`. The component system is intentionally a second layer,
+not the only way to use the crate.
 
 ## Named Helpers
 
