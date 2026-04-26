@@ -1,7 +1,7 @@
 #![cfg(feature = "components")]
 
 use maud::{Markup, Render, html};
-use maud_extensions::Component;
+use maud_extensions::{self as mx, Component, Slot};
 
 #[derive(Component, Debug)]
 struct Badge {
@@ -14,51 +14,49 @@ struct Badge {
 #[derive(Component, Debug)]
 struct Card {
     title: String,
-    #[mx(slot)]
-    header: Option<maud::Markup>,
+    header: Slot<Markup>,
     #[mx(slot, default)]
-    body: maud::Markup,
+    body: Slot<Markup>,
+    footer: Slot<Markup>,
     #[mx(slot, each = action)]
-    actions: Vec<maud::Markup>,
-    #[mx(slot)]
-    footer: Option<maud::Markup>,
+    actions: Slot<Vec<Markup>>,
 }
 
-impl Render for Badge {
-    fn render(&self) -> Markup {
-        html! {
-            span class="badge" {
-                (self.label)
-                @if let Some(tone) = &self.tone {
-                    " "
-                    (tone)
-                }
+#[mx::component]
+impl Badge {
+    render! {
+        span class="badge" {
+            (self.label)
+            @if let Some(tone) = &self.tone {
+                " "
+                (tone)
             }
         }
     }
 }
 
+#[mx::component]
+impl Card {
+    render! {
+        article class="card" {
+            header class="header" { (self.header) }
+            h2 { (self.title) }
+            div class="body" { (self.body) }
+            footer class="footer" { (self.footer) }
+            div class="actions" { (self.actions) }
+        }
+    }
+}
+
+impl Render for Badge {
+    fn render(&self) -> Markup {
+        ::maud_extensions::ComponentRender::__mx_render(self)
+    }
+}
+
 impl Render for Card {
     fn render(&self) -> Markup {
-        html! {
-            article class="card" {
-                @if let Some(header) = &self.header {
-                    header class="header" { (header) }
-                }
-                h2 { (self.title) }
-                div class="body" { (self.body) }
-                @if !self.actions.is_empty() {
-                    div class="actions" {
-                        @for action in &self.actions {
-                            (action)
-                        }
-                    }
-                }
-                @if let Some(footer) = &self.footer {
-                    footer class="footer" { (footer) }
-                }
-            }
-        }
+        ::maud_extensions::ComponentRender::__mx_render(self)
     }
 }
 
@@ -129,29 +127,17 @@ fn component_v1_named_optional_slots_accept_renderables() {
 }
 
 #[test]
-fn component_v1_named_optional_slots_support_maybe_setters() {
-    let markup = Card::new()
-        .title("Profile")
-        .maybe_header(Some(html! { em { "Heads up" } }))
-        .child(html! { p { "Body" } })
-        .maybe_footer(None::<maud::Markup>)
-        .render()
-        .into_string();
-
-    assert!(markup.contains("<header class=\"header\"><em>Heads up</em></header>"));
-    assert!(!markup.contains("class=\"footer\""));
-}
-
-#[test]
 fn component_v1_repeated_slots_support_each_style_renderable_setters() {
     let markup = Card::new()
         .title("Profile")
+        .header(html! { em { "Heads up" } })
         .child(html! { p { "Body" } })
         .action(html! { button { "Save" } })
         .action(html! { button { "Cancel" } })
         .render()
         .into_string();
 
+    assert!(markup.contains("<header class=\"header\"><em>Heads up</em></header>"));
     assert!(
         markup
             .contains("<div class=\"actions\"><button>Save</button><button>Cancel</button></div>")
@@ -163,6 +149,8 @@ fn component_v1_repeated_slots_keep_bulk_vec_setter() {
     let card = Card::new()
         .title("Profile")
         .body(html! { p { "Body" } })
+        .header(html! { span { "Welcome" } })
+        .footer(html! { button { "Save" } })
         .actions(vec![html! { button { "One" } }, html! { button { "Two" } }])
         .build();
 

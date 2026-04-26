@@ -1,0 +1,5 @@
+error: multiple slot fields require one `#[mx(default)]` slot; for example `#[mx(default)] body: Slot<maud::Markup>`
+ --> tests/ui/component_multiple_slots_need_default.rs:6:5
+  |
+6 |     header: Slot<Markup>,
+  |     ^^^^^^

@@ -41,8 +41,11 @@ impl ComponentField {
             .expect("named fields only should reach ComponentField::from_syn");
         let builder_name = name.clone();
         let ty = field.ty.clone();
-        let optional = option_inner(&field.ty).is_some();
-        let repeated = vec_inner(&field.ty).is_some();
+        let slot_inner = slot_inner(&field.ty);
+        let slot_content_ty = slot_inner.unwrap_or(&field.ty);
+        let is_slot_field = attrs.slot.is_some() || slot_inner.is_some() || is_maud_extensions_slots(&field.ty);
+        let optional = option_inner(slot_content_ty).is_some();
+        let repeated = vec_inner(slot_content_ty).is_some() || is_maud_extensions_slots(&field.ty);
 
         if attrs.each.is_some() && !repeated {
             return Err(syn::Error::new(
@@ -51,7 +54,7 @@ impl ComponentField {
             ));
         }
 
-        let kind = classify_kind(attrs, optional, repeated)?;
+        let kind = classify_kind(attrs, is_slot_field, optional, repeated)?;
 
         Ok(Self {
             name,
@@ -70,6 +73,16 @@ impl ComponentField {
             return None;
         };
         Some(slot)
+    }
+
+    pub(crate) fn slot_inner_ty(&self) -> Option<&Type> {
+        slot_inner(&self.ty)
+    }
+
+    pub(crate) fn repeated_slot_item_ty(&self) -> Option<&Type> {
+        self.slot_inner_ty()
+            .and_then(|inner| vec_inner(inner))
+            .or_else(|| vec_inner(&self.ty))
     }
 
     pub(crate) fn state_assoc_ident(&self) -> Ident {
@@ -105,8 +118,13 @@ impl ComponentField {
     }
 }
 
-fn classify_kind(attrs: FieldAttrs, optional: bool, repeated: bool) -> Result<FieldKind> {
-    if attrs.slot.is_some() {
+fn classify_kind(
+    attrs: FieldAttrs,
+    is_slot_field: bool,
+    optional: bool,
+    repeated: bool,
+) -> Result<FieldKind> {
+    if is_slot_field {
         return Ok(FieldKind::Slot(SlotField {
             optional,
             repeated,
@@ -153,6 +171,24 @@ fn classify_kind(attrs: FieldAttrs, optional: bool, repeated: bool) -> Result<Fi
     }))
 }
 
+fn slot_inner(ty: &Type) -> Option<&Type> {
+    let Type::Path(type_path) = ty else {
+        return None;
+    };
+    let segment = type_path.path.segments.last()?;
+    if segment.ident != "Slot" {
+        return None;
+    }
+    let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+        return None;
+    };
+    let first = arguments.args.first()?;
+    let GenericArgument::Type(inner) = first else {
+        return None;
+    };
+    Some(inner)
+}
+
 fn option_inner(ty: &Type) -> Option<&Type> {
     type_inner(ty, "Option")
 }
@@ -177,4 +213,17 @@ fn type_inner<'a>(ty: &'a Type, outer: &str) -> Option<&'a Type> {
         return None;
     };
     Some(inner)
+}
+
+fn is_maud_extensions_slots(ty: &Type) -> bool {
+    let Type::Path(type_path) = ty else {
+        return false;
+    };
+
+    let segments = type_path.path.segments.iter().collect::<Vec<_>>();
+    match segments.as_slice() {
+        [single] => single.ident == "Slots",
+        [.., penultimate, last] => penultimate.ident == "maud_extensions" && last.ident == "Slots",
+        _ => false,
+    }
 }

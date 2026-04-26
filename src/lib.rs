@@ -6,6 +6,7 @@
 //! This crate is the public runtime/support surface:
 //! - reexports proc macros like [`css!`] and [`js!`]
 //! - optionally reexports the experimental [`Component`] derive
+//! - optionally reexports the experimental [`component`] impl macro
 //! - provides runtime slot wrapper types like [`Slot`] and [`Slots`]
 //! - reexports `bon` so generated component code can depend only on
 //!   `maud-extensions`
@@ -24,3 +25,10 @@ pub use maud_extensions_macros::component;
 
 #[doc(hidden)]
 pub use bon;
+
+/// Hidden render hook used by the component builder render path.
+#[doc(hidden)]
+pub trait ComponentRender {
+    /// Renders the fully assembled component, including any impl-local facets.
+    fn __mx_render(&self) -> maud::Markup;
+}

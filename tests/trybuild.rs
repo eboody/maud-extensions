@@ -24,4 +24,5 @@ fn component_ui() {
     t.compile_fail("tests/ui/component_named_slot_wrong_type.rs");
     t.compile_fail("tests/ui/component_each_non_vec.rs");
     t.compile_fail("tests/ui/component_repeated_slot_wrong_type.rs");
+    t.compile_fail("tests/ui/component_multiple_slots_need_default.rs");
 }

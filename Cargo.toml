@@ -23,8 +23,8 @@ components = ["maud-extensions-macros/components"]
 
 [dependencies]
 bon = { version = "3.9", features = ["experimental-overwritable"] }
+maud = "0.27"
 maud-extensions-macros = { path = "maud-extensions-macros", version = "0.5.4" }
 
 [dev-dependencies]
-maud = "0.27"
 trybuild = "1.0.112"

@@ -1,4 +1,4 @@
-error: #[derive(Component)] v1 does not support repeated slots with non-`Vec<maud::Markup>` storage types yet; field `actions` in component `BadRepeatedSlot` requires a later slice
+error: #[derive(Component)] v1 does not support repeated slots with unsupported storage types yet; field `actions` in component `BadRepeatedSlot` requires a later slice
  --> tests/ui/component_repeated_slot_wrong_type.rs:4:8
   |
 4 | struct BadRepeatedSlot {

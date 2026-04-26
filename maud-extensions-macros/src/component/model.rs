@@ -24,6 +24,7 @@ impl Component {
 
         let fields = parse_fields(&input.ident, data)?;
         ensure_at_most_one_default_slot(&fields)?;
+        ensure_default_slot_disambiguated(&fields)?;
         ensure_no_const_generics(&input.generics)?;
 
         Ok(Self {
@@ -105,4 +106,23 @@ fn ensure_no_const_generics(generics: &Generics) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn ensure_default_slot_disambiguated(fields: &[ComponentField]) -> Result<()> {
+    let slot_fields = fields.iter().filter(|field| field.is_slot()).collect::<Vec<_>>();
+    if slot_fields.len() <= 1 {
+        return Ok(());
+    }
+
+    let has_default = slot_fields
+        .iter()
+        .any(|field| field.slot().is_some_and(|slot| slot.default));
+    if has_default {
+        return Ok(());
+    }
+
+    Err(syn::Error::new(
+        slot_fields[0].name.span(),
+        "multiple slot fields require one `#[mx(default)]` slot; for example `#[mx(default)] body: Slot<maud::Markup>`",
+    ))
 }
