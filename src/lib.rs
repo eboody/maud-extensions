@@ -6,15 +6,21 @@
 //! This crate is the public runtime/support surface:
 //! - reexports proc macros like [`css!`] and [`js!`]
 //! - optionally reexports the experimental [`Component`] derive
+//! - provides runtime slot wrapper types like [`Slot`] and [`Slots`]
 //! - reexports `bon` so generated component code can depend only on
 //!   `maud-extensions`
 
 extern crate self as maud_extensions;
 
+mod slot;
+
 pub use maud_extensions_macros::{css, js};
+pub use slot::{Slot, Slots};
 
 #[cfg(feature = "components")]
 pub use maud_extensions_macros::Component;
+#[cfg(feature = "components")]
+pub use maud_extensions_macros::component;
 
 #[doc(hidden)]
 pub use bon;
