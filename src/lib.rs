@@ -15,7 +15,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! mx = { package = "maud-extensions", version = "0.6.1", features = ["components"] }
+//! mx = { package = "maud-extensions", version = "0.6.2", features = ["components"] }
 //! ```
 //!
 //! # Experimental components

@@ -6,6 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-04-26
+
+### Changed
+
+- Polished the README and crate-level docs around the experimental component
+  system, including clearer `mx` dependency guidance and upstream links for the
+  browser-side building blocks it layers on top of.
+
 ## [0.6.1] - 2026-04-26
 
 ### Fixed
