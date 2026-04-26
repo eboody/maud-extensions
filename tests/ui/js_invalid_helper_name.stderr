@@ -1,0 +1,6 @@
+error: js! named helper names must be Rust identifiers, not string literals
+       help: write js!(card_script, { ... }) instead of js!("card-script", { ... })
+ --> tests/ui/js_invalid_helper_name.rs:4:9
+  |
+4 |     js!("card-script", {
+  |         ^^^^^^^^^^^^^

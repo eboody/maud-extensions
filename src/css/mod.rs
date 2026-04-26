@@ -1,4 +1,5 @@
 // CSS semantic owner: coordinates css! parsing, validation, and emission.
+mod diagnostics;
 mod dsl;
 mod emit;
 mod input;

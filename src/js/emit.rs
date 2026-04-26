@@ -5,6 +5,7 @@ use quote::quote;
 use syn::LitStr;
 
 use crate::js::{
+    diagnostics,
     input::{Input, Mode},
     source, validate,
 };
@@ -13,19 +14,20 @@ use crate::raw_text::sanitize_inline_script_source;
 const RAN_ATTR: &str = "data-mx-js-ran";
 
 pub(crate) fn markup_tokens(js_input: Input, mode: Mode) -> TokenStream2 {
+    let input_span = js_input.span();
     let js = match js_input {
         Input::Literal(content) => content.value(),
         Input::Tokens(tokens) => source::tokens_to_source(tokens),
     };
 
+    if let Err(err) = validate::script(&js) {
+        return diagnostics::invalid_script(input_span, &err).to_compile_error();
+    }
+
     let emitted = match mode {
         Mode::Always => js,
         Mode::Once => wrap_once(&js),
     };
-
-    if let Err(message) = validate::script(&emitted) {
-        return syn::Error::new(Span::call_site(), message).to_compile_error();
-    }
 
     let sanitized = LitStr::new(&sanitize_inline_script_source(&emitted), Span::call_site());
     quote! {{

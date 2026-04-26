@@ -5,7 +5,7 @@ use syn::{
     parse::{Parse, ParseStream},
 };
 
-use crate::css::source;
+use crate::css::{diagnostics, source};
 
 pub(crate) fn try_expand(tokens: &[TokenTree], index: &mut usize) -> Result<Option<String>> {
     if let Some(raw_css) = try_parse_raw_fragment(tokens, index)? {
@@ -54,12 +54,8 @@ impl Parse for RawFragment {
 }
 
 fn parse_raw_fragment(group: &Group) -> Result<String> {
-    let input = syn::parse2::<RawFragment>(group.stream()).map_err(|_| {
-        syn::Error::new(
-            group.span(),
-            "raw! expects exactly one string literal argument",
-        )
-    })?;
+    let input = syn::parse2::<RawFragment>(group.stream())
+        .map_err(|_| diagnostics::raw_expects_exactly_one_string_literal(group.span()))?;
     Ok(input.css.value())
 }
 
@@ -81,15 +77,15 @@ fn parse_macro_group<'a>(
         return Ok(None);
     }
     let Some(TokenTree::Group(group)) = tokens.get(*index + 2) else {
-        return Err(syn::Error::new(
+        return Err(diagnostics::macro_arguments_must_use_parentheses(
             punct.span(),
-            format!("{macro_name}! expects macro arguments in parentheses"),
+            macro_name,
         ));
     };
     if group.delimiter() != Delimiter::Parenthesis {
-        return Err(syn::Error::new(
+        return Err(diagnostics::macro_arguments_must_use_parentheses(
             group.span(),
-            format!("{macro_name}! expects macro arguments in parentheses"),
+            macro_name,
         ));
     }
     *index += 2;
@@ -120,18 +116,15 @@ fn parse_at_rule(group: &Group, macro_name: &str, at_rule: &str) -> Result<Strin
     let Some(body_index) = tokens.iter().rposition(
         |token| matches!(token, TokenTree::Group(group) if group.delimiter() == Delimiter::Brace),
     ) else {
-        return Err(syn::Error::new(
-            group.span(),
-            format!("{macro_name}! expects a prelude and trailing `{{ ... }}` body"),
-        ));
+        return Err(diagnostics::at_rule_requires_body(group.span(), macro_name));
     };
 
     if body_index < 2
         || !matches!(tokens.get(body_index - 1), Some(TokenTree::Punct(punct)) if punct.as_char() == ',')
     {
-        return Err(syn::Error::new(
+        return Err(diagnostics::at_rule_requires_prelude_then_body(
             group.span(),
-            format!("{macro_name}! expects `{macro_name}!(prelude, {{ ... }})`"),
+            macro_name,
         ));
     }
 
@@ -140,9 +133,9 @@ fn parse_at_rule(group: &Group, macro_name: &str, at_rule: &str) -> Result<Strin
         .skip(body_index + 1)
         .any(|token| !matches!(token, TokenTree::Punct(punct) if punct.as_char() == ','))
     {
-        return Err(syn::Error::new(
+        return Err(diagnostics::at_rule_accepts_only_prelude_and_body(
             group.span(),
-            format!("{macro_name}! only accepts a prelude and one body block"),
+            macro_name,
         ));
     }
 
@@ -156,9 +149,9 @@ fn parse_at_rule(group: &Group, macro_name: &str, at_rule: &str) -> Result<Strin
         source::token_trees_to_source(prelude_tokens.to_vec())?
     };
     if prelude.trim().is_empty() {
-        return Err(syn::Error::new(
+        return Err(diagnostics::at_rule_requires_non_empty_prelude(
             group.span(),
-            format!("{macro_name}! requires a non-empty prelude"),
+            macro_name,
         ));
     }
     let TokenTree::Group(body_group) = &tokens[body_index] else {
@@ -191,26 +184,20 @@ fn try_parse_unit(tokens: &[TokenTree], index: &mut usize) -> Result<Option<Stri
 fn parse_unit(group: &Group, macro_name: &str, suffix: &str) -> Result<String> {
     let tokens: Vec<TokenTree> = group.stream().into_iter().collect();
     if tokens.is_empty() {
-        return Err(syn::Error::new(
-            group.span(),
-            format!("{macro_name}! requires a value"),
-        ));
+        return Err(diagnostics::unit_requires_value(group.span(), macro_name));
     }
     if tokens
         .iter()
         .any(|token| matches!(token, TokenTree::Punct(punct) if punct.as_char() == ','))
     {
-        return Err(syn::Error::new(
+        return Err(diagnostics::unit_expects_exactly_one_value(
             group.span(),
-            format!("{macro_name}! expects exactly one value argument"),
+            macro_name,
         ));
     }
     let value = source::token_trees_to_source(tokens)?;
     if value.trim().is_empty() {
-        return Err(syn::Error::new(
-            group.span(),
-            format!("{macro_name}! requires a value"),
-        ));
+        return Err(diagnostics::unit_requires_value(group.span(), macro_name));
     }
     Ok(format!("{value}{suffix}"))
 }

@@ -1,4 +1,5 @@
 // JS semantic owner: coordinates js! parsing, validation, and emission.
+mod diagnostics;
 mod emit;
 mod input;
 mod source;

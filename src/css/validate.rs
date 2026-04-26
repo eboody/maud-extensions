@@ -1,5 +1,22 @@
 // CSS validity checks: structural balance plus lightweight stylesheet parsing.
-pub(crate) fn stylesheet(css: &str) -> core::result::Result<(), String> {
+use cssparser::{BasicParseErrorKind, SourceLocation};
+
+pub(crate) enum StylesheetError {
+    UnterminatedComment,
+    UnmatchedClosing {
+        delimiter: char,
+    },
+    UnterminatedString,
+    UnclosedDelimiter {
+        delimiter: char,
+    },
+    ParserRejectedTokens {
+        location: SourceLocation,
+        message: String,
+    },
+}
+
+pub(crate) fn stylesheet(css: &str) -> core::result::Result<(), StylesheetError> {
     validate_structure(css)?;
     let mut input = cssparser::ParserInput::new(css);
     let mut parser = cssparser::Parser::new(&mut input);
@@ -7,14 +24,19 @@ pub(crate) fn stylesheet(css: &str) -> core::result::Result<(), String> {
         match parser.next_including_whitespace_and_comments() {
             Ok(_) => {}
             Err(err) => match err.kind {
-                cssparser::BasicParseErrorKind::EndOfInput => return Ok(()),
-                _ => return Err("css! could not parse CSS tokens".to_string()),
+                BasicParseErrorKind::EndOfInput => return Ok(()),
+                _ => {
+                    return Err(StylesheetError::ParserRejectedTokens {
+                        location: err.location,
+                        message: err.kind.to_string(),
+                    });
+                }
             },
         }
     }
 }
 
-fn validate_structure(css: &str) -> core::result::Result<(), String> {
+fn validate_structure(css: &str) -> core::result::Result<(), StylesheetError> {
     let mut chars = css.chars().peekable();
     let mut stack = Vec::new();
     let mut string_delim = None;
@@ -43,7 +65,7 @@ fn validate_structure(css: &str) -> core::result::Result<(), String> {
                     }
                 }
                 if !terminated {
-                    return Err("css! found an unterminated comment".to_string());
+                    return Err(StylesheetError::UnterminatedComment);
                 }
             }
             '"' | '\'' => string_delim = Some(ch),
@@ -51,19 +73,19 @@ fn validate_structure(css: &str) -> core::result::Result<(), String> {
             '}' => match stack.pop() {
                 Some('{') => {}
                 _ => {
-                    return Err("css! found an unmatched closing `}` in the stylesheet".to_string());
+                    return Err(StylesheetError::UnmatchedClosing { delimiter: '}' });
                 }
             },
             ']' => match stack.pop() {
                 Some('[') => {}
                 _ => {
-                    return Err("css! found an unmatched closing `]` in the stylesheet".to_string());
+                    return Err(StylesheetError::UnmatchedClosing { delimiter: ']' });
                 }
             },
             ')' => match stack.pop() {
                 Some('(') => {}
                 _ => {
-                    return Err("css! found an unmatched closing `)` in the stylesheet".to_string());
+                    return Err(StylesheetError::UnmatchedClosing { delimiter: ')' });
                 }
             },
             _ => {}
@@ -71,13 +93,13 @@ fn validate_structure(css: &str) -> core::result::Result<(), String> {
     }
 
     if string_delim.is_some() {
-        return Err("css! found an unterminated string literal".to_string());
+        return Err(StylesheetError::UnterminatedString);
     }
 
     if let Some(unclosed) = stack.pop() {
-        return Err(format!(
-            "css! found an unclosed `{unclosed}` delimiter in the stylesheet"
-        ));
+        return Err(StylesheetError::UnclosedDelimiter {
+            delimiter: unclosed,
+        });
     }
     Ok(())
 }

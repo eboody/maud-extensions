@@ -1,0 +1,6 @@
+error: js! named helper mode must be `once`
+       help: use `js!(helper_name, once, { ... })` for once-only helpers, or omit the mode entirely
+ --> tests/ui/js_invalid_mode.rs:4:22
+  |
+4 |     js!(card_script, always, {
+  |                      ^^^^^^

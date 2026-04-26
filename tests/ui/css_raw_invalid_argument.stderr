@@ -1,4 +1,5 @@
 error: raw! expects exactly one string literal argument
+       help: write raw!("...") when you need to inject literal CSS without DSL rewriting
  --> tests/ui/css_raw_invalid_argument.rs:5:13
   |
 5 |         raw!(123)

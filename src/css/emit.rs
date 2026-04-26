@@ -4,10 +4,11 @@ use proc_macro2::{Ident, Span, TokenStream as TokenStream2};
 use quote::quote;
 use syn::LitStr;
 
-use crate::css::{input::Input, source, validate};
+use crate::css::{diagnostics, input::Input, source, validate};
 use crate::raw_text::sanitize_inline_style_source;
 
 pub(crate) fn markup_tokens(css_input: Input) -> TokenStream2 {
+    let input_span = css_input.span();
     let css = match css_input {
         Input::Literal(content) => content.value(),
         Input::Tokens(tokens) => match source::tokens_to_source(tokens) {
@@ -16,8 +17,8 @@ pub(crate) fn markup_tokens(css_input: Input) -> TokenStream2 {
         },
     };
 
-    if let Err(message) = validate::stylesheet(&css) {
-        return syn::Error::new(Span::call_site(), message).to_compile_error();
+    if let Err(err) = validate::stylesheet(&css) {
+        return diagnostics::invalid_stylesheet(input_span, &err).to_compile_error();
     }
 
     let content_lit = LitStr::new(&sanitize_inline_style_source(&css), Span::call_site());

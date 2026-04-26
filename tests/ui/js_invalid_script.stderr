@@ -1,0 +1,9 @@
+error: js! could not parse JavaScript (rendered JS line 1, column 6: Expression expected)
+       help: fix the JavaScript syntax near that rendered JS location
+ --> tests/ui/js_invalid_script.rs:4:9
+  |
+4 |       js!({
+  |  _________^
+5 | |         let = ;
+6 | |     });
+  | |_____^

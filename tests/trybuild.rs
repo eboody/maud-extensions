@@ -7,4 +7,10 @@ fn reset_ui() {
     t.compile_fail("tests/ui/css_raw_invalid_argument.rs");
     t.compile_fail("tests/ui/css_macro_helpers_invalid.rs");
     t.compile_fail("tests/ui/css_invalid_stylesheet.rs");
+    t.compile_fail("tests/ui/css_invalid_helper_name.rs");
+    t.compile_fail("tests/ui/css_named_helper_trailing_tokens.rs");
+    t.compile_fail("tests/ui/js_invalid_helper_name.rs");
+    t.compile_fail("tests/ui/js_invalid_mode.rs");
+    t.compile_fail("tests/ui/js_invalid_script.rs");
+    t.compile_fail("tests/ui/js_named_helper_trailing_tokens.rs");
 }
