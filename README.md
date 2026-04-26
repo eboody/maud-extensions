@@ -28,7 +28,7 @@ or in `Cargo.toml`:
 
 ```toml
 [dependencies]
-mx = { package = "maud-extensions", version = "0.5.4" }
+mx = { package = "maud-extensions", version = "0.6.0" }
 ```
 
 ## Core Story

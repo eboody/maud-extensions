@@ -1,6 +1,6 @@
 [package]
 name = "maud-extensions"
-version = "0.5.4"
+version = "0.6.0"
 edition = "2024"
 rust-version = "1.85"
 description = "Component, inline CSS/JS, and font helper macros for Maud views."
@@ -24,7 +24,7 @@ components = ["maud-extensions-macros/components"]
 [dependencies]
 bon = { version = "3.9", features = ["experimental-overwritable"] }
 maud = "0.27"
-maud-extensions-macros = { path = "maud-extensions-macros", version = "0.5.4" }
+maud-extensions-macros = { path = "maud-extensions-macros", version = "0.6.0" }
 
 [dev-dependencies]
 trybuild = "1.0.112"

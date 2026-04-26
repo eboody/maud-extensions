@@ -6,15 +6,32 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-04-26
+
 ### Added
 
-- Added `raw!(r#"..."#)` as an escape hatch inside token-style `css!` and
-  `inline_css!` input for CSS fragments that are not valid Rust token syntax.
+- Added the experimental component system behind the `components` feature with:
+  - `#[derive(Component)]` Bon-backed builders
+  - `Slot<Markup>` / `Slot<Vec<Markup>>` slot declarations
+  - `#[mx::component]` impl blocks with `render!`, `css!`, and `js!`
+  - builder `.render()` auto-injecting impl-local CSS and JS into the rendered root
+- Added compile-fail coverage for unsupported component declarations and
+  malformed `#[mx::component]` impl blocks.
+- Split the proc-macro implementation into `maud-extensions-macros` and
+  re-exported `bon` from the runtime crate so downstream users only need
+  `maud-extensions`.
 
 ### Changed
 
-- `inline_css!` now validates string-literal CSS input with the same lightweight
-  syntax check used for token-style CSS.
+- Refocused the crate around a small core (`html!` + local `css!` / `js!`) plus
+  an opt-in experimental component layer.
+- Refactored CSS and JS macro internals into semantic modules with shared
+  diagnostics and clearer compile-time messages.
+
+### Removed
+
+- Removed the older component-centric surfaces from the public path in favor of
+  the new experimental component model.
 
 ## [0.5.1] - 2026-04-17
 
