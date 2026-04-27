@@ -122,3 +122,27 @@ pub fn component_derive(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as component::Input);
     component::expand(input)
 }
+
+/// Removed component impl macro.
+#[cfg(feature = "components")]
+#[proc_macro_attribute]
+pub fn component(_attr: TokenStream, _input: TokenStream) -> TokenStream {
+    syn::Error::new(
+        proc_macro2::Span::call_site(),
+        "`#[mx::component]` is no longer part of the component story; use explicit `fn css() -> Markup`, `fn js() -> Markup`, and a normal `impl Render` instead",
+    )
+    .to_compile_error()
+    .into()
+}
+
+/// Removed render block macro from the component story.
+#[cfg(feature = "components")]
+#[proc_macro]
+pub fn render(_input: TokenStream) -> TokenStream {
+    syn::Error::new(
+        proc_macro2::Span::call_site(),
+        "`render!` is no longer part of the component story; write a normal `impl Render` and place `(Self::css())` / `(Self::js())` explicitly in the markup",
+    )
+    .to_compile_error()
+    .into()
+}
