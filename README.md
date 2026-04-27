@@ -185,6 +185,31 @@ browser-side tools:
 `maud-extensions` is not trying to replace those pieces; it is trying to make
 them feel coherent and component-local from Maud.
 
+To bootstrap the browser-side runtime in a page, emit one of the bundled
+runtime macros in `<head>`:
+
+```rust
+use maud::html;
+use mx::surreal_scope_signals_inline;
+
+fn page() -> maud::Markup {
+    html! {
+        head {
+            (surreal_scope_signals_inline!())
+        }
+        body {
+            // component markup here
+        }
+    }
+}
+```
+
+Available bundles:
+
+- `surreal_scope_inline!()`
+- `signals_inline!()`
+- `surreal_scope_signals_inline!()`
+
 If you want a more minimal component style, you can still stop at plain
 `html!` + `css!` + `js!`. The component system is intentionally a second layer,
 not the only way to use the crate.

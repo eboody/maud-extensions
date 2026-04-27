@@ -18,6 +18,7 @@ mod css;
 mod internal_diagnostics;
 mod js;
 mod raw_text;
+mod runtime;
 
 use proc_macro::TokenStream;
 use syn::parse_macro_input;
@@ -85,6 +86,24 @@ pub fn css(input: TokenStream) -> TokenStream {
 pub fn js(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as js::MacroInput);
     js::expand(input)
+}
+
+/// Emits bundled Surreal and css-scope-inline runtimes.
+#[proc_macro]
+pub fn surreal_scope_inline(input: TokenStream) -> TokenStream {
+    runtime::expand_runtime_bundle(input, runtime::Bundle::SurrealScope)
+}
+
+/// Emits bundled Signals runtime and adapter.
+#[proc_macro]
+pub fn signals_inline(input: TokenStream) -> TokenStream {
+    runtime::expand_runtime_bundle(input, runtime::Bundle::Signals)
+}
+
+/// Emits the full runtime bundle: Surreal, css-scope-inline, Signals core, and adapter.
+#[proc_macro]
+pub fn surreal_scope_signals_inline(input: TokenStream) -> TokenStream {
+    runtime::expand_runtime_bundle(input, runtime::Bundle::SurrealScopeSignals)
 }
 
 /// Experimental opt-in derive for builder-centric Maud component authoring.

@@ -92,12 +92,27 @@
 //! - Surreal: <https://github.com/gnat/surreal>
 //! - css-scope-inline: <https://github.com/gnat/css-scope-inline>
 //! - Preact Signals: <https://github.com/preactjs/signals>
+//!
+//! To bootstrap those browser-side pieces in a page, emit one of the bundled
+//! runtime macros in `<head>`:
+//!
+//! ```ignore
+//! use maud::html;
+//! use mx::surreal_scope_signals_inline;
+//!
+//! fn page() -> maud::Markup {
+//!     html! {
+//!         head { (surreal_scope_signals_inline!()) }
+//!         body { /* page body */ }
+//!     }
+//! }
+//! ```
 
 extern crate self as maud_extensions;
 
 mod slot;
 
-pub use maud_extensions_macros::{css, js};
+pub use maud_extensions_macros::{css, js, signals_inline, surreal_scope_inline, surreal_scope_signals_inline};
 pub use slot::{Slot, Slots};
 
 #[cfg(feature = "components")]
