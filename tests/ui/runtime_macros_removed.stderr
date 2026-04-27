@@ -1,0 +1,23 @@
+error: `surreal_scope_inline!()` is no longer part of the preferred story; use `mx::Init::new().surrealjs().scoped_css().build()` or `mx::Init::all()` instead
+ --> tests/ui/runtime_macros_removed.rs:4:13
+  |
+4 |     let _ = surreal_scope_inline!();
+  |             ^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the macro `surreal_scope_inline` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: `signals_inline!()` is no longer part of the preferred story; use `mx::Init::new().signals().build()` or `mx::Init::all()` instead
+ --> tests/ui/runtime_macros_removed.rs:5:13
+  |
+5 |     let _ = signals_inline!();
+  |             ^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the macro `signals_inline` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: `surreal_scope_signals_inline!()` is no longer part of the preferred story; use `mx::Init::all()` instead
+ --> tests/ui/runtime_macros_removed.rs:6:13
+  |
+6 |     let _ = surreal_scope_signals_inline!();
+  |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the macro `surreal_scope_signals_inline` (in Nightly builds, run with -Z macro-backtrace for more info)

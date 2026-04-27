@@ -14,7 +14,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! mx = { package = "maud-extensions", version = "0.6.6", features = ["components"] }
+//! mx = { package = "maud-extensions", version = "0.6.7", features = ["components"] }
 //! ```
 //!
 //! # Experimental components
@@ -87,8 +87,7 @@
 //! - css-scope-inline: <https://github.com/gnat/css-scope-inline>
 //! - Preact Signals: <https://github.com/preactjs/signals>
 //!
-//! To bootstrap those browser-side pieces in a page, prefer [`Init`] in
-//! `<head>`:
+//! To bootstrap those browser-side pieces in a page, use [`Init`] in `<head>`:
 //!
 //! ```ignore
 //! use maud::html;

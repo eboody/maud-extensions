@@ -18,7 +18,6 @@ mod css;
 mod internal_diagnostics;
 mod js;
 mod raw_text;
-mod runtime;
 
 use proc_macro::TokenStream;
 use syn::parse_macro_input;
@@ -90,20 +89,35 @@ pub fn js(input: TokenStream) -> TokenStream {
 
 /// Emits bundled Surreal and css-scope-inline runtimes.
 #[proc_macro]
-pub fn surreal_scope_inline(input: TokenStream) -> TokenStream {
-    runtime::expand_runtime_bundle(input, runtime::Bundle::SurrealScope)
+pub fn surreal_scope_inline(_input: TokenStream) -> TokenStream {
+    syn::Error::new(
+        proc_macro2::Span::call_site(),
+        "`surreal_scope_inline!()` is no longer part of the preferred story; use `mx::Init::new().surrealjs().scoped_css().build()` or `mx::Init::all()` instead",
+    )
+    .to_compile_error()
+    .into()
 }
 
 /// Emits bundled Signals runtime and adapter.
 #[proc_macro]
-pub fn signals_inline(input: TokenStream) -> TokenStream {
-    runtime::expand_runtime_bundle(input, runtime::Bundle::Signals)
+pub fn signals_inline(_input: TokenStream) -> TokenStream {
+    syn::Error::new(
+        proc_macro2::Span::call_site(),
+        "`signals_inline!()` is no longer part of the preferred story; use `mx::Init::new().signals().build()` or `mx::Init::all()` instead",
+    )
+    .to_compile_error()
+    .into()
 }
 
 /// Emits the full runtime bundle: Surreal, css-scope-inline, Signals core, and adapter.
 #[proc_macro]
-pub fn surreal_scope_signals_inline(input: TokenStream) -> TokenStream {
-    runtime::expand_runtime_bundle(input, runtime::Bundle::SurrealScopeSignals)
+pub fn surreal_scope_signals_inline(_input: TokenStream) -> TokenStream {
+    syn::Error::new(
+        proc_macro2::Span::call_site(),
+        "`surreal_scope_signals_inline!()` is no longer part of the preferred story; use `mx::Init::all()` instead",
+    )
+    .to_compile_error()
+    .into()
 }
 
 /// Experimental opt-in derive for builder-centric Maud component authoring.

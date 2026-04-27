@@ -19,7 +19,7 @@ same dependency:
 
 ```toml
 [dependencies]
-mx = { package = "maud-extensions", version = "0.6.6", features = ["components"] }
+mx = { package = "maud-extensions", version = "0.6.7", features = ["components"] }
 ```
 
 ## Core Story
@@ -157,6 +157,16 @@ Mental model:
 
 This keeps the builder story ergonomic while leaving rendering explicit and easy to reason about.
 
+The normal path is just `.render()` on the complete builder. Use `.build()`
+only when you specifically want the concrete component value first.
+
+```rust
+let markup = Card::new()
+    .title("Profile")
+    .child(maud::html! { p { "Body" } })
+    .render();
+```
+
 ## Bundled browser-side building blocks
 
 The current CSS/JS/component story is designed to layer on top of a few small
@@ -172,7 +182,7 @@ browser-side tools:
 `maud-extensions` is not trying to replace those pieces; it is trying to make
 them feel coherent and component-local from Maud.
 
-To bootstrap the browser-side runtime in a page, prefer `mx::Init` in `<head>`:
+To bootstrap the browser-side runtime in a page, use `mx::Init` in `<head>`:
 
 ```rust
 use maud::html;
@@ -190,13 +200,10 @@ fn page() -> maud::Markup {
 }
 ```
 
-Available bundles:
+Recommended bootstrap entrypoints:
 
 - `Init::all()`
 - `Init::new().surrealjs().scoped_css().signals().build()`
-- `surreal_scope_inline!()`
-- `signals_inline!()`
-- `surreal_scope_signals_inline!()`
 
 If you want a more minimal component style, you can still stop at plain
 `html!` + `css!` + `js!`. The component system is intentionally a second layer,

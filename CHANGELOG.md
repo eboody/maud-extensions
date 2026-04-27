@@ -6,6 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.7] - 2026-04-26
+
+### Changed
+
+- Removed the old runtime bootstrap macros from the preferred story in favor of
+  `Init` while keeping compile-time migration errors for legacy macro usage.
+
 ## [0.6.6] - 2026-04-26
 
 ### Changed

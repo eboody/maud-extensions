@@ -13,6 +13,7 @@ fn reset_ui() {
     t.compile_fail("tests/ui/js_invalid_mode.rs");
     t.compile_fail("tests/ui/js_invalid_script.rs");
     t.compile_fail("tests/ui/js_named_helper_trailing_tokens.rs");
+    t.compile_fail("tests/ui/runtime_macros_removed.rs");
 }
 
 #[cfg(feature = "components")]
