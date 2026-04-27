@@ -144,6 +144,8 @@ What this gives you:
 Current constraints:
 
 - use `Slot<T>` / `Slot<Vec<T>>` for slot declarations
+- reserve `#[mx(default)]` for selecting the default slot only
+- use Rust `Default` or `Option<T>` for non-slot defaults
 - if there are multiple slot fields, mark exactly one `#[mx(default)]`
 - repeated slots use `Slot<Vec<T>>` plus `#[mx(each = item_name)]`
 
@@ -170,17 +172,16 @@ browser-side tools:
 `maud-extensions` is not trying to replace those pieces; it is trying to make
 them feel coherent and component-local from Maud.
 
-To bootstrap the browser-side runtime in a page, emit one of the bundled
-runtime macros in `<head>`:
+To bootstrap the browser-side runtime in a page, prefer `mx::Init` in `<head>`:
 
 ```rust
 use maud::html;
-use mx::surreal_scope_signals_inline;
+use mx::Init;
 
 fn page() -> maud::Markup {
     html! {
         head {
-            (surreal_scope_signals_inline!())
+            (Init::all())
         }
         body {
             // component markup here
@@ -191,6 +192,8 @@ fn page() -> maud::Markup {
 
 Available bundles:
 
+- `Init::all()`
+- `Init::new().surrealjs().scoped_css().signals().build()`
 - `surreal_scope_inline!()`
 - `signals_inline!()`
 - `surreal_scope_signals_inline!()`

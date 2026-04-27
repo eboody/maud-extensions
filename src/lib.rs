@@ -25,6 +25,8 @@
 //! - `#[derive(Component)]` on the struct
 //! - `Slot<maud::Markup>` / `Slot<Vec<maud::Markup>>` for slot fields
 //! - `#[mx(default)]` on the single default slot
+//! - reserve `#[mx(default)]` for slot selection only; use Rust `Default` or
+//!   `Option<T>` for non-slot defaults
 //! - ordinary inherent helpers like `fn css() -> Markup` and
 //!   `fn js() -> Markup`
 //! - ordinary `impl Render` with explicit `(Self::css())` / `(Self::js())`
@@ -85,16 +87,16 @@
 //! - css-scope-inline: <https://github.com/gnat/css-scope-inline>
 //! - Preact Signals: <https://github.com/preactjs/signals>
 //!
-//! To bootstrap those browser-side pieces in a page, emit one of the bundled
-//! runtime macros in `<head>`:
+//! To bootstrap those browser-side pieces in a page, prefer [`Init`] in
+//! `<head>`:
 //!
 //! ```ignore
 //! use maud::html;
-//! use mx::surreal_scope_signals_inline;
+//! use mx::Init;
 //!
 //! fn page() -> maud::Markup {
 //!     html! {
-//!         head { (surreal_scope_signals_inline!()) }
+//!         head { (Init::all()) }
 //!         body { /* page body */ }
 //!     }
 //! }
@@ -102,11 +104,13 @@
 
 extern crate self as maud_extensions;
 
+mod init;
 mod slot;
 
 pub use maud_extensions_macros::{
     css, js, signals_inline, surreal_scope_inline, surreal_scope_signals_inline,
 };
+pub use init::Init;
 pub use slot::{Slot, Slots};
 
 #[cfg(feature = "components")]
