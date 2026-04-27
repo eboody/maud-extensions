@@ -1,7 +1,7 @@
 #![cfg(feature = "components")]
 
 use maud::{Markup, Render, html};
-use maud_extensions::{self as mx, Component, Slot};
+use maud_extensions::{Component, Slot};
 
 #[derive(Component, Debug)]
 struct Badge {
@@ -22,41 +22,62 @@ struct Card {
     actions: Slot<Vec<Markup>>,
 }
 
-#[mx::component]
 impl Badge {
-    render! {
-        span class="badge" {
-            (self.label)
-            @if let Some(tone) = &self.tone {
-                " "
-                (tone)
-            }
-        }
+    fn css() -> Markup {
+        maud::PreEscaped(String::new())
     }
-}
 
-#[mx::component]
-impl Card {
-    render! {
-        article class="card" {
-            header class="header" { (self.header) }
-            h2 { (self.title) }
-            div class="body" { (self.body) }
-            footer class="footer" { (self.footer) }
-            div class="actions" { (self.actions) }
-        }
+    fn js() -> Markup {
+        maud::PreEscaped(String::new())
     }
 }
 
 impl Render for Badge {
     fn render(&self) -> Markup {
-        ::maud_extensions::ComponentRender::__mx_render(self)
+        html! {
+            span class="badge" {
+                (Self::css())
+                (Self::js())
+                (self.label)
+                @if let Some(tone) = &self.tone {
+                    " "
+                    (tone)
+                }
+            }
+        }
+    }
+}
+
+impl Card {
+    fn css() -> Markup {
+        maud_extensions::css! {
+            me .actions {
+                display: flex;
+                gap: 0.5rem;
+            }
+        }
+    }
+
+    fn js() -> Markup {
+        maud_extensions::js!(once, {
+            me().class_add("ready");
+        })
     }
 }
 
 impl Render for Card {
     fn render(&self) -> Markup {
-        ::maud_extensions::ComponentRender::__mx_render(self)
+        html! {
+            article class="card" {
+                (Self::css())
+                (Self::js())
+                header class="header" { (self.header) }
+                h2 { (self.title) }
+                div class="body" { (self.body) }
+                footer class="footer" { (self.footer) }
+                div class="actions" { (self.actions) }
+            }
+        }
     }
 }
 

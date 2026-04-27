@@ -122,11 +122,3 @@ pub fn component_derive(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as component::Input);
     component::expand(input)
 }
-
-/// Experimental component impl macro for colocated render/css/js blocks.
-#[cfg(feature = "components")]
-#[proc_macro_attribute]
-pub fn component(_attr: TokenStream, input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as syn::ItemImpl);
-    component::expand_impl(input)
-}

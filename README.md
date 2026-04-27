@@ -66,20 +66,6 @@ This is still the intended center of gravity:
 
 The component system is opt-in behind the `components` feature.
 
-The macro that turns the impl-local component surface on is:
-
-```rust
-#[mx::component]
-impl Card {
-    render! { ... }
-    css! { ... }
-    js!(once, { ... });
-}
-```
-
-That impl macro is what makes `render!`, `css!`, and `js!` part of the
-component render pipeline.
-
 Preferred authoring pattern:
 
 ```rust
@@ -97,31 +83,40 @@ struct Card {
     actions: Slot<Vec<Markup>>,
 }
 
-#[mx::component]
 impl Card {
-    css! {
-        me {
-            padding: 1rem;
-            border: 1px solid #ddd;
-        }
+    fn css() -> Markup {
+        mx::css! {
+            me {
+                padding: 1rem;
+                border: 1px solid #ddd;
+            }
 
-        me .actions {
-            display: flex;
-            gap: 0.5rem;
+            me .actions {
+                display: flex;
+                gap: 0.5rem;
+            }
         }
     }
 
-    js!(once, {
-        me().class_add("ready");
-    });
+    fn js() -> Markup {
+        mx::js!(once, {
+            me().class_add("ready");
+        })
+    }
+}
 
-    render! {
-        article.card {
-            header class="header" { (self.header) }
-            h2 { (self.title) }
-            div.body { (self.body) }
-            footer class="footer" { (self.footer) }
-            div.actions { (self.actions) }
+impl maud::Render for Card {
+    fn render(&self) -> Markup {
+        maud::html! {
+            article.card {
+                (Self::css())
+                (Self::js())
+                header class="header" { (self.header) }
+                h2 { (self.title) }
+                div.body { (self.body) }
+                footer class="footer" { (self.footer) }
+                div.actions { (self.actions) }
+            }
         }
     }
 }
@@ -142,33 +137,23 @@ What this gives you:
 - Bon-backed typed builders
 - `Slot<Markup>` and `Slot<Vec<Markup>>` as the slot declaration path
 - `#[mx(default)]` for the single default slot
-- `#[mx::component] impl` blocks with colocated:
-  - `render! { ... }`
-  - `css! { ... }`
-  - `js!(once, { ... })`
-- builder `.render()` automatically includes impl-local CSS and JS in the
-  rendered root
-- no manual `impl Render` glue just to stitch component-local CSS/JS into the
-  output
+- explicit colocated `fn css() -> Markup` and `fn js() -> Markup` helpers
+- a normal `impl Render` where you place `(Self::css())` / `(Self::js())` exactly where they belong
+- builder `.render()` just renders the completed component value
 
 Current constraints:
 
 - use `Slot<T>` / `Slot<Vec<T>>` for slot declarations
 - if there are multiple slot fields, mark exactly one `#[mx(default)]`
 - repeated slots use `Slot<Vec<T>>` plus `#[mx(each = item_name)]`
-- `#[mx::component]` impls currently allow:
-  - exactly one `render!`
-  - at most one `css!`
-  - at most one `js!`
 
 Mental model:
 
 - `#[derive(Component)]` owns fields, slots, and the Bon-backed builder
-- `#[mx::component]` owns the render root and colocated CSS/JS blocks
-- builder `.render()` goes through the render hook produced by the impl macro
+- inherent `css()` / `js()` helpers own component-local assets
+- the `Render` impl stays explicit and decides where those helpers are emitted
 
-This keeps the builder and the impl-local render/assets story explicit without
-requiring manual `(Self::css())` / `(Self::js())` emission in the render body.
+This keeps the builder story ergonomic while leaving rendering explicit and easy to reason about.
 
 ## Bundled browser-side building blocks
 

@@ -156,9 +156,9 @@ fn derive_bon_v1(component: &Component) -> Result<TokenStream2, TokenStream2> {
             pub fn render(self) -> ::maud::Markup
             where
                 S: #state_mod_name::IsComplete,
-                #name #ty_generics: ::maud_extensions::ComponentRender,
+                #name #ty_generics: ::maud::Render,
             {
-                ::maud_extensions::ComponentRender::__mx_render(&self.build())
+                ::maud::Render::render(&self.build())
             }
         }
     })
