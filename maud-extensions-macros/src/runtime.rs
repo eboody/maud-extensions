@@ -21,18 +21,18 @@ pub(crate) fn expand_runtime_bundle(input: TokenStream, bundle: Bundle) -> Token
 
     let scripts = match bundle {
         Bundle::SurrealScope => vec![
-            runtime_script(include_str!("../../assets/surreal.js")),
-            runtime_script(include_str!("../../assets/css-scope-inline.js")),
+            runtime_script(include_str!("../assets/surreal.js")),
+            runtime_script(include_str!("../assets/css-scope-inline.js")),
         ],
         Bundle::Signals => vec![
-            runtime_script(include_str!("../../assets/signals-core.min.js")),
-            runtime_script(include_str!("../../assets/signals-adapter.js")),
+            runtime_script(include_str!("../assets/signals-core.min.js")),
+            runtime_script(include_str!("../assets/signals-adapter.js")),
         ],
         Bundle::SurrealScopeSignals => vec![
-            runtime_script(include_str!("../../assets/surreal.js")),
-            runtime_script(include_str!("../../assets/css-scope-inline.js")),
-            runtime_script(include_str!("../../assets/signals-core.min.js")),
-            runtime_script(include_str!("../../assets/signals-adapter.js")),
+            runtime_script(include_str!("../assets/surreal.js")),
+            runtime_script(include_str!("../assets/css-scope-inline.js")),
+            runtime_script(include_str!("../assets/signals-core.min.js")),
+            runtime_script(include_str!("../assets/signals-adapter.js")),
         ],
     };
 
