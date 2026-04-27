@@ -6,6 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.5] - 2026-04-26
+
+### Changed
+
+- Reserved `#[mx(default)]` for selecting the default slot only; non-slot
+  defaults should now come from Rust `Default` or `Option<T>`.
+
 ## [0.6.4] - 2026-04-26
 
 ### Changed
