@@ -125,6 +125,13 @@ fn classify_kind(
     repeated: bool,
 ) -> Result<FieldKind> {
     if is_slot_field {
+        if attrs.default.as_ref().is_some_and(|default| default.expr.is_some()) {
+            return Err(syn::Error::new(
+                attrs.default.expect("checked is_some").span,
+                "`#[mx(default = ...)]` is reserved for slot selection; use bare `#[mx(default)]` on the default slot",
+            ));
+        }
+
         return Ok(FieldKind::Slot(SlotField {
             optional,
             repeated,
@@ -133,28 +140,14 @@ fn classify_kind(
         }));
     }
 
-    if attrs
-        .default
-        .as_ref()
-        .is_some_and(|default| default.expr.is_none())
-        && optional
-    {
+    if attrs.default.is_some() {
         return Err(syn::Error::new(
             attrs.default.expect("checked is_some").span,
-            "`#[mx(default)]` on an `Option<T>` prop is redundant; optional props are already defaultable by absence",
+            "`#[mx(default)]` is reserved for selecting the default slot; use Rust `Default` or `Option<T>` for non-slot defaults",
         ));
     }
 
-    if attrs.default.is_some() && repeated {
-        return Ok(FieldKind::Prop(PropField {
-            optional,
-            repeated,
-            default: attrs.default,
-            each: attrs.each.map(|each| each.setter),
-        }));
-    }
-
-    if attrs.default.is_some() || attrs.each.is_some() || optional || repeated {
+    if attrs.each.is_some() || optional || repeated {
         return Ok(FieldKind::Prop(PropField {
             optional,
             repeated,

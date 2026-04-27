@@ -56,7 +56,7 @@ impl Parse for AttrItem {
             }
             _ => Err(Error::new(
                 ident.span(),
-                "unknown mx field attribute; supported forms are `default`, `default = ...`, and `each = name`",
+                "unknown mx field attribute; supported forms are `default` and `each = name`",
             )),
         }
     }

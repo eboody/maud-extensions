@@ -147,6 +147,7 @@ fn derive_bon_v1(component: &Component) -> Result<TokenStream2, TokenStream2> {
                     #( #inits ),*
                 }
             }
+
         }
 
         impl #builder_impl_generics #builder_name #builder_type_generics {
@@ -232,6 +233,7 @@ fn prop_param(field: &ComponentField) -> Result<TokenStream2, TokenStream2> {
         }
     }
 }
+
 
 fn default_slot_methods(
     field: &ComponentField,

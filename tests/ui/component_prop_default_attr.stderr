@@ -1,0 +1,5 @@
+error: `#[mx(default)]` is reserved for selecting the default slot; use Rust `Default` or `Option<T>` for non-slot defaults
+ --> tests/ui/component_prop_default_attr.rs:5:10
+  |
+5 |     #[mx(default)]
+  |          ^^^^^^^

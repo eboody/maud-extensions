@@ -7,7 +7,6 @@ use maud_extensions::{Component, Slot};
 struct Badge {
     label: String,
     tone: Option<String>,
-    #[mx(default = 0)]
     count: usize,
 }
 
@@ -83,16 +82,18 @@ impl Render for Card {
 
 #[test]
 fn component_v1_uses_bon_backed_new_and_build() {
-    let badge = Badge::new().label("New").tone("warm").build();
+    let badge = Badge::new().label("New").tone("warm").count(0).build();
 
     assert_eq!(badge.label, "New");
     assert_eq!(badge.tone.as_deref(), Some("warm"));
     assert_eq!(badge.count, 0);
 }
 
+
+
 #[test]
 fn component_v1_supports_optional_props_by_absence() {
-    let badge = Badge::new().label("Stable").build();
+    let badge = Badge::new().label("Stable").count(0).build();
 
     assert_eq!(badge.label, "Stable");
     assert_eq!(badge.tone, None);
@@ -104,6 +105,7 @@ fn component_v1_builder_can_render_when_component_implements_render() {
     let markup = Badge::new()
         .label("Live")
         .tone("warm")
+        .count(0)
         .render()
         .into_string();
 
