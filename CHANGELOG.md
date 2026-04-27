@@ -6,6 +6,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-04-26
+
+### Added
+
+- Added bundled runtime emitter macros for the browser-side helper stack:
+  - `surreal_scope_inline!()`
+  - `signals_inline!()`
+  - `surreal_scope_signals_inline!()`
+
+### Changed
+
+- Updated the docs to point at the upstream Surreal, css-scope-inline, and
+  Preact Signals projects while documenting the runtime bootstrap story.
+
 ## [0.6.2] - 2026-04-26
 
 ### Changed
