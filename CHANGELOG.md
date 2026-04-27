@@ -6,6 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-04-26
+
+### Changed
+
+- Simplified the documented experimental component story back to explicit
+  `fn css() -> Markup`, `fn js() -> Markup`, and ordinary `impl Render`
+  composition while keeping the Bon-backed builder and typed slot model.
+
 ## [0.6.3] - 2026-04-26
 
 ### Added
