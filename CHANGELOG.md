@@ -6,6 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.6] - 2026-04-26
+
+### Changed
+
+- Removed the unfinished `Variant` experiment and kept the component story
+  focused on Bon-backed builders, typed slots, explicit `css()` / `js()`
+  helpers, and ordinary `impl Render` composition.
+
 ## [0.6.5] - 2026-04-26
 
 ### Changed
